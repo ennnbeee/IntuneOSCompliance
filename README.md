@@ -1,4 +1,4 @@
-# 📲 IntuneOSCompliance
+# 💻 IntuneOSCompliance
 
 The IntuneOSCompliance script is a PowerShell tool designed to automatically update operating system based compliance policies and app protection policies based on the latest supported released and updated Windows, Android, and Apple operating systems
 

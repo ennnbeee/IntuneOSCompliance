@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 0.1.0
+.VERSION 0.1.1
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
 
+v0.1.1 - Added support for Windows App Protection Policies and Windows 10
 v0.1.0 - Initial release.
 
 .PRIVATEDATA
@@ -24,6 +25,12 @@ v0.1.0 - Initial release.
 
 .DESCRIPTION
 
+
+.PARAMETER notification
+Set to $true to send a Microsoft Teams notification if any policies were updated. Default is $true.
+
+.PARAMETER teamsWebHook
+Provide the Microsoft Teams webhook URL to send notifications to. If not provided, notifications will not be sent.
 
 .PARAMETER tenantId
 Provide the Id of the Entra ID tenant to connect to.
@@ -52,10 +59,10 @@ App Authentication
 
 param(
 
-    [Parameter(Mandatory = $false, HelpMessage = '')]
+    [Parameter(Mandatory = $false, HelpMessage = 'Sets whether a Microsoft Teams notification should be sent if any policies were updated')]
     [bool]$notification = $true,
 
-    [Parameter(Mandatory = $false, HelpMessage = '')]
+    [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
     [String]$teamsWebHook,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Id of the Entra ID tenant to connect to')]
@@ -215,7 +222,7 @@ function Get-AppProtectionPolicy {
     [cmdletbinding()]
     param (
         [Parameter(Mandatory = $true)]
-        [ValidateSet('iOS', 'Android')]
+        [ValidateSet('iOS', 'Android', 'Windows')]
         [string]$os
     )
 
@@ -225,6 +232,9 @@ function Get-AppProtectionPolicy {
     }
     elseif ($os -eq 'iOS') {
         $Resource = 'deviceAppManagement/iosManagedAppProtections'
+    }
+    elseif ($os -eq 'Windows') {
+        $Resource = 'deviceAppManagement/windowsManagedAppProtections'
     }
 
     try {
@@ -258,7 +268,7 @@ function Set-AppProtectionPolicy() {
     (
 
         [Parameter(Mandatory = $true)]
-        [ValidateSet('iOS', 'Android')]
+        [ValidateSet('iOS', 'Android', 'Windows')]
         [string]$os,
 
         [Parameter(Mandatory = $true)]
@@ -275,6 +285,9 @@ function Set-AppProtectionPolicy() {
     }
     elseif ($os -eq 'Android') {
         $resource = "deviceAppManagement/androidManagedAppProtections/$id"
+    }
+    elseif ($os -eq 'Windows') {
+        $resource = "deviceAppManagement/windowsManagedAppProtections/$id"
     }
 
     if ($PSCmdlet.ShouldProcess('App Protection Policy', 'Update')) {
@@ -307,7 +320,13 @@ function Get-WindowsUpdateBuild() {
         $osVersion
     )
     try {
-        $uri = 'https://support.microsoft.com/en-us/feed/atom/4ec863cc-2ecd-e187-6cb3-b50c6545db92'
+
+        if ($osVersion -like '19*') {
+            $uri = 'https://support.microsoft.com/en-us/feed/atom/6ae59d69-36fc-8e4d-23dd-631d98bf74a9'
+        }
+        else {
+            $uri = 'https://support.microsoft.com/en-us/feed/atom/4ec863cc-2ecd-e187-6cb3-b50c6545db92'
+        }
 
         [xml]$osUpdates = (Invoke-WebRequest -Uri $uri -UseBasicParsing -ContentType 'application/xml').Content -replace '[^\x09\x0A\x0D\x20-\xD7FF\xE000-\xFFFD\x10000-x10FFFF]', ''
 
@@ -320,7 +339,6 @@ function Get-WindowsUpdateBuild() {
         $buildVersion = $buildVersions[0].Substring($BuildVersions[0].LastIndexOf('.')) -replace '[^0-9]'
         $osBuildVersion = '10.0.' + $osVersion + '.' + $buildVersion
         return $osBuildVersion
-
     }
     catch {
         Write-Error $_.Exception.Message
@@ -445,9 +463,9 @@ Write-Host '
 ░█░░░█░█░█░█░█▀▀░█░░░░█░░█▀█░█░█░█░░░█▀▀
 ░▀▀▀░▀▀▀░▀░▀░▀░░░▀▀▀░▀▀▀░▀░▀░▀░▀░▀▀▀░▀▀▀' -ForegroundColor DarkRed
 
-Write-Host "`nIntuneOSCompliance - Update and review App Assignments in bulk." -ForegroundColor Green
+Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.0 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.1 Public Preview' -ForegroundColor Yellow -NoNewline
 Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-06' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
@@ -514,40 +532,208 @@ Start-Sleep -Seconds $rndWait
 
 #region compliance
 $policyType = 'Compliance'
-Write-Output 'Retrieving Compliance Policies...'
 $compliancePolicies = Get-DeviceCompliancePolicy
-Write-Output "`nFound $($compliancePolicies.Count) Compliance Policies."
+if ($compliancePolicies.Count -eq 0) {
+    Write-Host "No $policyType Policies found in tenant." -ForegroundColor Red
+    exit
+}
+else {
+    #region Windows
+    $os = 'Windows'
+    $osImageUrl = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/windows.png'
+    $windowsCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.windows10CompliancePolicy' -and ($_.validOperatingSystemBuildRanges -ne $null -or $_.osMinimumVersion -ne $null) }
+    Write-Output "`nFound $($windowsCompliancePolicies.Count) $os Compliance Policies with build ranges or Minimum versions."
 
-#region Windows
-$osImageUrl = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/windows-11.png'
-$windowsCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.windows10CompliancePolicy' -and ($_.validOperatingSystemBuildRanges -ne $null -or $_.osMinimumVersion -ne $null) }
-Write-Output "`nFound $($windowsCompliancePolicies.Count) Windows Compliance Policies with Build Ranges."
-
-if ($null -ne $windowsCompliancePolicies) {
-    $windowsVersions = @()
-    $windowsBuilds = @()
-    $windowsCompliancePolicies.osMinimumVersion | ForEach-Object {
-        if ($null -ne $_) {
+    if ($null -ne $windowsCompliancePolicies) {
+        $windowsVersions = @()
+        $windowsBuilds = @()
+        $windowsCompliancePolicies.osMinimumVersion | ForEach-Object {
+            if ($null -ne $_) {
+                $windowsVersions += $_.split('.')[2]
+            }
+        }
+        $windowsCompliancePolicies.validOperatingSystemBuildRanges.lowestVersion | ForEach-Object {
             $windowsVersions += $_.split('.')[2]
         }
-    }
-    $windowsCompliancePolicies.validOperatingSystemBuildRanges.lowestVersion | ForEach-Object {
-        $windowsVersions += $_.split('.')[2]
-    }
-    $windowsVersions | Sort-Object -Unique | ForEach-Object {
-        $windowsBuilds += [PSCustomObject]@{
-            version     = $_
-            latestBuild = Get-WindowsUpdateBuild -osVersion $_
+        $windowsVersions | Sort-Object -Unique | ForEach-Object {
+            $windowsBuilds += [PSCustomObject]@{
+                version     = $_
+                latestBuild = Get-WindowsUpdateBuild -osVersion $_
+            }
+        }
+        foreach ($compliancePolicy in $windowsCompliancePolicies) {
+            $policyChange = $false
+            $policyDisplayName = $compliancePolicy.displayName
+            Write-Output "Checking policy - $policyDisplayName"
+            if (![string]::IsNullOrEmpty($compliancePolicy.osMinimumVersion)) {
+                $minVersion = $compliancePolicy.osMinimumVersion
+                $osVersion = $minVersion.Split('.')[2]
+                $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+                if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
+                    $policyChange = $true
+                    $compliancePolicy.osMinimumVersion = $latestBuild
+                    $teamsItems += @{
+                        items          = @(
+                            @{
+                                columns = @(
+                                    @{
+                                        items = @(
+                                            @{
+                                                type = 'Image'
+                                                url  = "$osImageUrl"
+                                                size = 'Medium'
+                                            }
+                                        )
+                                        type  = 'Column'
+                                        width = 'auto'
+                                    }
+                                    @{
+                                        items = @(
+                                            @{
+                                                isSubtle = $true
+                                                size     = 'Small'
+                                                text     = "$policyType - $os"
+                                                wrap     = $true
+                                                type     = 'TextBlock'
+                                            }
+                                            @{
+                                                text    = "$policyDisplayName"
+                                                weight  = 'Bolder'
+                                                wrap    = $true
+                                                type    = 'TextBlock'
+                                                spacing = 'None'
+                                            }
+                                            @{
+                                                text    = "Minimum operating system build version updated from $minVersion to $latestBuild"
+                                                wrap    = $true
+                                                type    = 'TextBlock'
+                                                spacing = 'None'
+                                            }
+                                        )
+                                        type  = 'Column'
+                                        width = 'stretch'
+                                    }
+                                )
+                                type    = 'ColumnSet'
+                            }
+                        )
+                        style          = 'emphasis'
+                        spacing        = 'Small'
+                        targetWidth    = 'atLeast:Narrow'
+                        type           = 'Container'
+                        roundedCorners = $true
+                        showBorder     = $true
+                    }
+                }
+            }
+            if (![string]::IsNullOrEmpty($compliancePolicy.validOperatingSystemBuildRanges)) {
+                foreach ($buildRange in $compliancePolicy.validOperatingSystemBuildRanges) {
+                    $minVersion = $buildRange.lowestVersion
+                    $osVersion = $minVersion.Split('.')[2]
+                    $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+                    if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
+                        $policyChange = $true
+                        $buildRange.lowestVersion = $latestBuild
+                        $teamsItems += @{
+                            items          = @(
+                                @{
+                                    columns = @(
+                                        @{
+                                            items = @(
+                                                @{
+                                                    type = 'Image'
+                                                    url  = "$osImageUrl"
+                                                    size = 'Medium'
+                                                }
+                                            )
+                                            type  = 'Column'
+                                            width = 'auto'
+                                        }
+                                        @{
+                                            items = @(
+                                                @{
+                                                    isSubtle = $true
+                                                    size     = 'Small'
+                                                    text     = "$policyType"
+                                                    wrap     = $true
+                                                    type     = 'TextBlock'
+                                                }
+                                                @{
+                                                    text    = "$policyDisplayName"
+                                                    weight  = 'Bolder'
+                                                    wrap    = $true
+                                                    type    = 'TextBlock'
+                                                    spacing = 'None'
+                                                }
+                                                @{
+                                                    text    = "Minimum operating system version updated from $minVersion to $latestBuild"
+                                                    wrap    = $true
+                                                    type    = 'TextBlock'
+                                                    spacing = 'None'
+                                                }
+                                            )
+                                            type  = 'Column'
+                                            width = 'stretch'
+                                        }
+                                    )
+                                    type    = 'ColumnSet'
+                                }
+                            )
+                            style          = 'emphasis'
+                            spacing        = 'Small'
+                            targetWidth    = 'atLeast:Narrow'
+                            type           = 'Container'
+                            roundedCorners = $true
+                            showBorder     = $true
+                        }
+                    }
+                }
+            }
+            if ($policyChange -eq $true) {
+                $notification = $true
+                Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
+                $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
+                Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
+                try {
+                    Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
+                }
+                catch {
+                    Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
+                    continue
+                }
+            }
+            else {
+                Write-Output "No update needed for policy - $policyDisplayName"
+            }
         }
     }
-    foreach ($compliancePolicy in $windowsCompliancePolicies) {
-        $policyChange = $false
-        $policyDisplayName = $compliancePolicy.displayName
-        Write-Output "Checking policy - $policyDisplayName"
-        if (![string]::IsNullOrEmpty($compliancePolicy.osMinimumVersion)) {
+    #endregion
+
+    #region macOS
+    $os = 'macOS'
+    $osImageUrl = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/apple.png'
+    $macOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.macOSCompliancePolicy' -and $_.osMinimumVersion -ne $null }
+    Write-Output "`nFound $($macOSCompliancePolicies.Count) $os Compliance Policies with Minimum OS Version."
+
+    if ($null -ne $macOSCompliancePolicies) {
+        $macOSVersions = @()
+        $macOSBuilds = @()
+        $macOSCompliancePolicies.osMinimumVersion | ForEach-Object {
+            $macOSVersions += $_.Split('.')[0]
+        }
+        $macOSVersions | Sort-Object -Unique | ForEach-Object {
+            $macOSBuilds += [PSCustomObject]@{
+                version     = $_
+                latestBuild = Get-AppleUpdateBuild -OS 'macOS' -osVersion $_
+            }
+        }
+        foreach ($compliancePolicy in $macOSCompliancePolicies) {
+            $policyChange = $false
+            $policyDisplayName = $compliancePolicy.displayName
+            Write-Output "Checking policy - $policyDisplayName"
             $minVersion = $compliancePolicy.osMinimumVersion
-            $osVersion = $minVersion.Split('.')[2]
-            $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+            $osVersion = $minVersion.Split('.')[0]
+            $latestBuild = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
@@ -571,7 +757,7 @@ if ($null -ne $windowsCompliancePolicies) {
                                         @{
                                             isSubtle = $true
                                             size     = 'Small'
-                                            text     = "$policyType"
+                                            text     = "$policyType - $os"
                                             wrap     = $true
                                             type     = 'TextBlock'
                                         }
@@ -583,7 +769,7 @@ if ($null -ne $windowsCompliancePolicies) {
                                             spacing = 'None'
                                         }
                                         @{
-                                            text    = "Minimum operating system build version updated from $minVersion to $latestBuild"
+                                            text    = "Minimum operating system version updated from $minVersion to $latestBuild"
                                             wrap    = $true
                                             type    = 'TextBlock'
                                             spacing = 'None'
@@ -604,399 +790,241 @@ if ($null -ne $windowsCompliancePolicies) {
                     showBorder     = $true
                 }
             }
-        }
-        if (![string]::IsNullOrEmpty($compliancePolicy.validOperatingSystemBuildRanges)) {
-            foreach ($buildRange in $compliancePolicy.validOperatingSystemBuildRanges) {
-                $minVersion = $buildRange.lowestVersion
-                $osVersion = $minVersion.Split('.')[2]
-                $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
-                if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
-                    $policyChange = $true
-                    $buildRange.lowestVersion = $latestBuild
-                    $teamsItems += @{
-                        items          = @(
-                            @{
-                                columns = @(
-                                    @{
-                                        items = @(
-                                            @{
-                                                type = 'Image'
-                                                url  = "$osImageUrl"
-                                                size = 'Medium'
-                                            }
-                                        )
-                                        type  = 'Column'
-                                        width = 'auto'
-                                    }
-                                    @{
-                                        items = @(
-                                            @{
-                                                isSubtle = $true
-                                                size     = 'Small'
-                                                text     = "$policyType"
-                                                wrap     = $true
-                                                type     = 'TextBlock'
-                                            }
-                                            @{
-                                                text    = "$policyDisplayName"
-                                                weight  = 'Bolder'
-                                                wrap    = $true
-                                                type    = 'TextBlock'
-                                                spacing = 'None'
-                                            }
-                                            @{
-                                                text    = "Minimum operating system version updated from $minVersion to $latestBuild"
-                                                wrap    = $true
-                                                type    = 'TextBlock'
-                                                spacing = 'None'
-                                            }
-                                        )
-                                        type  = 'Column'
-                                        width = 'stretch'
-                                    }
-                                )
-                                type    = 'ColumnSet'
-                            }
-                        )
-                        style          = 'emphasis'
-                        spacing        = 'Small'
-                        targetWidth    = 'atLeast:Narrow'
-                        type           = 'Container'
-                        roundedCorners = $true
-                        showBorder     = $true
-                    }
+            if ($policyChange -eq $true) {
+                $notification = $true
+                Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
+                $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
+                Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
+                try {
+                    Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
+                }
+                catch {
+                    Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
+                    continue
                 }
             }
-        }
-        if ($policyChange -eq $true) {
-            $notification = $true
-            Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
-            $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
-            Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
-            try {
-                Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
+            else {
+                Write-Output "No update needed for policy - $policyDisplayName"
             }
-            catch {
-                Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
-                continue
-            }
-        }
-        else {
-            Write-Output "No update needed for policy - $policyDisplayName"
         }
     }
+    #endregion
+
+    #region iOS
+    $os = 'iOS/iPadOS'
+    $osImageUrl = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/apple.png'
+    $iOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.iosCompliancePolicy' -and $_.osMinimumVersion -ne $null }
+    Write-Output "`nFound $($iOSCompliancePolicies.Count) $os Compliance Policies with Minimum OS Version."
+
+    if ($null -ne $iOSCompliancePolicies) {
+        $iOSVersions = @()
+        $iOSBuilds = @()
+        $iOSCompliancePolicies.osMinimumVersion | ForEach-Object {
+            $iOSVersions += $_.Split('.')[0]
+        }
+        $iOSVersions | Sort-Object -Unique | ForEach-Object {
+            $iOSBuilds += [PSCustomObject]@{
+                version     = $_
+                latestBuild = Get-AppleUpdateBuild -OS 'iOS' -osVersion $_
+            }
+        }
+        foreach ($compliancePolicy in $iOSCompliancePolicies) {
+            $policyChange = $false
+            $policyDisplayName = $compliancePolicy.displayName
+            Write-Output "Checking policy - $policyDisplayName"
+            $minVersion = $compliancePolicy.osMinimumVersion
+            $osVersion = $minVersion.Split('.')[0]
+            $latestBuild = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+            if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
+                $policyChange = $true
+                $compliancePolicy.osMinimumVersion = $latestBuild
+                $teamsItems += @{
+                    items          = @(
+                        @{
+                            columns = @(
+                                @{
+                                    items = @(
+                                        @{
+                                            type = 'Image'
+                                            url  = "$osImageUrl"
+                                            size = 'Medium'
+                                        }
+                                    )
+                                    type  = 'Column'
+                                    width = 'auto'
+                                }
+                                @{
+                                    items = @(
+                                        @{
+                                            isSubtle = $true
+                                            size     = 'Small'
+                                            text     = "$policyType - $os"
+                                            wrap     = $true
+                                            type     = 'TextBlock'
+                                        }
+                                        @{
+                                            text    = "$policyDisplayName"
+                                            weight  = 'Bolder'
+                                            wrap    = $true
+                                            type    = 'TextBlock'
+                                            spacing = 'None'
+                                        }
+                                        @{
+                                            text    = "Minimum operating system version updated from $minVersion to $latestBuild"
+                                            wrap    = $true
+                                            type    = 'TextBlock'
+                                            spacing = 'None'
+                                        }
+                                    )
+                                    type  = 'Column'
+                                    width = 'stretch'
+                                }
+                            )
+                            type    = 'ColumnSet'
+                        }
+                    )
+                    style          = 'emphasis'
+                    spacing        = 'Small'
+                    targetWidth    = 'atLeast:Narrow'
+                    type           = 'Container'
+                    roundedCorners = $true
+                    showBorder     = $true
+                }
+            }
+            if ($policyChange -eq $true) {
+                $notification = $true
+                Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
+                $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
+                Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
+                try {
+                    Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
+
+                }
+                catch {
+                    Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
+                    continue
+                }
+            }
+            else {
+                Write-Output "No update needed for policy - $policyDisplayName"
+            }
+        }
+    }
+    #endregion
+
+    #region Android
+    $os = 'Android'
+    $osImageUrl = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/android.png'
+    $androidCompliancePolicies = $compliancePolicies | Where-Object { ($_.'@odata.type' -eq '#microsoft.graph.androidWorkProfileCompliancePolicy' -or $_.'@odata.type' -eq '#microsoft.graph.androidDeviceOwnerCompliancePolicy') -and $_.osMinimumVersion -ne $null }
+    Write-Output "`nFound $($androidCompliancePolicies.Count) $os Compliance Policies with Minimum OS Version."
+
+    if ($null -ne $androidCompliancePolicies) {
+        $androidVersions = @()
+        $androidBuilds = @()
+        $androidPatch = Get-AndroidUpdateBuild
+        $androidCompliancePolicies.osMinimumVersion | ForEach-Object {
+            $androidVersions += $_
+        }
+        $androidVersions | Sort-Object -Unique | ForEach-Object {
+            $androidBuilds += [PSCustomObject]@{
+                version     = $_
+                latestBuild = $androidPatch
+            }
+        }
+        foreach ($compliancePolicy in $androidCompliancePolicies) {
+            $policyChange = $false
+            $policyDisplayName = $compliancePolicy.displayName
+            Write-Output "Checking policy - $policyDisplayName"
+            $minOSVersion = $compliancePolicy.osMinimumVersion
+            $minVersion = $compliancePolicy.minAndroidSecurityPatchLevel
+            $latestBuild = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty latestBuild
+            if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
+                $policyChange = $true
+                $compliancePolicy.minAndroidSecurityPatchLevel = $latestBuild
+                $teamsItems += @{
+                    items          = @(
+                        @{
+                            columns = @(
+                                @{
+                                    items = @(
+                                        @{
+                                            type = 'Image'
+                                            url  = "$osImageUrl"
+                                            size = 'Medium'
+                                        }
+                                    )
+                                    type  = 'Column'
+                                    width = 'auto'
+                                }
+                                @{
+                                    items = @(
+                                        @{
+                                            isSubtle = $true
+                                            size     = 'Small'
+                                            text     = "$policyType - $os"
+                                            wrap     = $true
+                                            type     = 'TextBlock'
+                                        }
+                                        @{
+                                            text    = "$policyDisplayName"
+                                            weight  = 'Bolder'
+                                            wrap    = $true
+                                            type    = 'TextBlock'
+                                            spacing = 'None'
+                                        }
+                                        @{
+                                            text    = "Minimum security patch level for $minOSVersion updated from $minVersion to $latestBuild"
+                                            wrap    = $true
+                                            type    = 'TextBlock'
+                                            spacing = 'None'
+                                        }
+                                    )
+                                    type  = 'Column'
+                                    width = 'stretch'
+                                }
+                            )
+                            type    = 'ColumnSet'
+                        }
+                    )
+                    style          = 'emphasis'
+                    spacing        = 'Small'
+                    targetWidth    = 'atLeast:Narrow'
+                    type           = 'Container'
+                    roundedCorners = $true
+                    showBorder     = $true
+                }
+            }
+            if ($policyChange -eq $true) {
+                $notification = $true
+                Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
+                $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
+                Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
+                try {
+                    Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
+                }
+                catch {
+                    Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
+                    continue
+                }
+            }
+            else {
+                Write-Output "No update needed for policy - $policyDisplayName"
+            }
+        }
+    }
+    #endregion
 }
-#endregion
 
-#region macOS
-$osImageUrl = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/apple-alt.png'
-$macOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.macOSCompliancePolicy' -and $_.osMinimumVersion -ne $null }
-Write-Output "`nFound $($macOSCompliancePolicies.Count) macOS Compliance Policies with Minimum OS Version."
-
-if ($null -ne $macOSCompliancePolicies) {
-    $macOSVersions = @()
-    $macOSBuilds = @()
-    $macOSCompliancePolicies.osMinimumVersion | ForEach-Object {
-        $macOSVersions += $_.Split('.')[0]
-    }
-    $macOSVersions | Sort-Object -Unique | ForEach-Object {
-        $macOSBuilds += [PSCustomObject]@{
-            version     = $_
-            latestBuild = Get-AppleUpdateBuild -OS 'macOS' -osVersion $_
-        }
-    }
-    foreach ($compliancePolicy in $macOSCompliancePolicies) {
-        $policyChange = $false
-        $policyDisplayName = $compliancePolicy.displayName
-        Write-Output "Checking policy - $policyDisplayName"
-        $minVersion = $compliancePolicy.osMinimumVersion
-        $osVersion = $minVersion.Split('.')[0]
-        $latestBuild = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
-        if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
-            $policyChange = $true
-            $compliancePolicy.osMinimumVersion = $latestBuild
-            $teamsItems += @{
-                items          = @(
-                    @{
-                        columns = @(
-                            @{
-                                items = @(
-                                    @{
-                                        type = 'Image'
-                                        url  = "$osImageUrl"
-                                        size = 'Medium'
-                                    }
-                                )
-                                type  = 'Column'
-                                width = 'auto'
-                            }
-                            @{
-                                items = @(
-                                    @{
-                                        isSubtle = $true
-                                        size     = 'Small'
-                                        text     = "$policyType"
-                                        wrap     = $true
-                                        type     = 'TextBlock'
-                                    }
-                                    @{
-                                        text    = "$policyDisplayName"
-                                        weight  = 'Bolder'
-                                        wrap    = $true
-                                        type    = 'TextBlock'
-                                        spacing = 'None'
-                                    }
-                                    @{
-                                        text    = "Minimum operating system version updated from $minVersion to $latestBuild"
-                                        wrap    = $true
-                                        type    = 'TextBlock'
-                                        spacing = 'None'
-                                    }
-                                )
-                                type  = 'Column'
-                                width = 'stretch'
-                            }
-                        )
-                        type    = 'ColumnSet'
-                    }
-                )
-                style          = 'emphasis'
-                spacing        = 'Small'
-                targetWidth    = 'atLeast:Narrow'
-                type           = 'Container'
-                roundedCorners = $true
-                showBorder     = $true
-            }
-        }
-        if ($policyChange -eq $true) {
-            $notification = $true
-            Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
-            $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
-            Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
-            try {
-                Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
-            }
-            catch {
-                Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
-                continue
-            }
-        }
-        else {
-            Write-Output "No update needed for policy - $policyDisplayName"
-        }
-    }
-}
-#endregion
-
-#region iOS
-$osImageUrl = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/apple.png'
-$iOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.iosCompliancePolicy' -and $_.osMinimumVersion -ne $null }
-Write-Output "`nFound $($iOSCompliancePolicies.Count) iOS Compliance Policies with Minimum OS Version."
-
-if ($null -ne $iOSCompliancePolicies) {
-    $iOSVersions = @()
-    $iOSBuilds = @()
-    $iOSCompliancePolicies.osMinimumVersion | ForEach-Object {
-        $iOSVersions += $_.Split('.')[0]
-    }
-    $iOSVersions | Sort-Object -Unique | ForEach-Object {
-        $iOSBuilds += [PSCustomObject]@{
-            version     = $_
-            latestBuild = Get-AppleUpdateBuild -OS 'iOS' -osVersion $_
-        }
-    }
-    foreach ($compliancePolicy in $iOSCompliancePolicies) {
-        $policyChange = $false
-        $policyDisplayName = $compliancePolicy.displayName
-        Write-Output "Checking policy - $policyDisplayName"
-        $minVersion = $compliancePolicy.osMinimumVersion
-        $osVersion = $minVersion.Split('.')[0]
-        $latestBuild = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
-        if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
-            $policyChange = $true
-            $compliancePolicy.osMinimumVersion = $latestBuild
-            $teamsItems += @{
-                items          = @(
-                    @{
-                        columns = @(
-                            @{
-                                items = @(
-                                    @{
-                                        type = 'Image'
-                                        url  = "$osImageUrl"
-                                        size = 'Medium'
-                                    }
-                                )
-                                type  = 'Column'
-                                width = 'auto'
-                            }
-                            @{
-                                items = @(
-                                    @{
-                                        isSubtle = $true
-                                        size     = 'Small'
-                                        text     = "$policyType"
-                                        wrap     = $true
-                                        type     = 'TextBlock'
-                                    }
-                                    @{
-                                        text    = "$policyDisplayName"
-                                        weight  = 'Bolder'
-                                        wrap    = $true
-                                        type    = 'TextBlock'
-                                        spacing = 'None'
-                                    }
-                                    @{
-                                        text    = "Minimum operating system version updated from $minVersion to $latestBuild"
-                                        wrap    = $true
-                                        type    = 'TextBlock'
-                                        spacing = 'None'
-                                    }
-                                )
-                                type  = 'Column'
-                                width = 'stretch'
-                            }
-                        )
-                        type    = 'ColumnSet'
-                    }
-                )
-                style          = 'emphasis'
-                spacing        = 'Small'
-                targetWidth    = 'atLeast:Narrow'
-                type           = 'Container'
-                roundedCorners = $true
-                showBorder     = $true
-            }
-        }
-        if ($policyChange -eq $true) {
-            $notification = $true
-            Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
-            $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
-            Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
-            try {
-                Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
-
-            }
-            catch {
-                Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
-                continue
-            }
-        }
-        else {
-            Write-Output "No update needed for policy - $policyDisplayName"
-        }
-    }
-}
-#endregion
-
-#region Android
-$osImageUrl = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/android.png'
-$androidCompliancePolicies = $compliancePolicies | Where-Object { ($_.'@odata.type' -eq '#microsoft.graph.androidWorkProfileCompliancePolicy' -or $_.'@odata.type' -eq '#microsoft.graph.androidDeviceOwnerCompliancePolicy') -and $_.osMinimumVersion -ne $null }
-Write-Output "`nFound $($androidCompliancePolicies.Count) Android Compliance Policies with Minimum OS Version."
-
-if ($null -ne $androidCompliancePolicies) {
-    $androidVersions = @()
-    $androidBuilds = @()
-    $androidPatch = Get-AndroidUpdateBuild
-    $androidCompliancePolicies.osMinimumVersion | ForEach-Object {
-        $androidVersions += $_
-    }
-    $androidVersions | Sort-Object -Unique | ForEach-Object {
-        $androidBuilds += [PSCustomObject]@{
-            version     = $_
-            latestBuild = $androidPatch
-        }
-    }
-    foreach ($compliancePolicy in $androidCompliancePolicies) {
-        $policyChange = $false
-        $policyDisplayName = $compliancePolicy.displayName
-        Write-Output "Checking policy - $policyDisplayName"
-        $minOSVersion = $compliancePolicy.osMinimumVersion
-        $minVersion = $compliancePolicy.minAndroidSecurityPatchLevel
-        $latestBuild = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty latestBuild
-        if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
-            $policyChange = $true
-            $compliancePolicy.minAndroidSecurityPatchLevel = $latestBuild
-            $teamsItems += @{
-                items          = @(
-                    @{
-                        columns = @(
-                            @{
-                                items = @(
-                                    @{
-                                        type = 'Image'
-                                        url  = "$osImageUrl"
-                                        size = 'Medium'
-                                    }
-                                )
-                                type  = 'Column'
-                                width = 'auto'
-                            }
-                            @{
-                                items = @(
-                                    @{
-                                        isSubtle = $true
-                                        size     = 'Small'
-                                        text     = "$policyType"
-                                        wrap     = $true
-                                        type     = 'TextBlock'
-                                    }
-                                    @{
-                                        text    = "$policyDisplayName"
-                                        weight  = 'Bolder'
-                                        wrap    = $true
-                                        type    = 'TextBlock'
-                                        spacing = 'None'
-                                    }
-                                    @{
-                                        text    = "Minimum security patch level for $minOSVersion updated from $minVersion to $latestBuild"
-                                        wrap    = $true
-                                        type    = 'TextBlock'
-                                        spacing = 'None'
-                                    }
-                                )
-                                type  = 'Column'
-                                width = 'stretch'
-                            }
-                        )
-                        type    = 'ColumnSet'
-                    }
-                )
-                style          = 'emphasis'
-                spacing        = 'Small'
-                targetWidth    = 'atLeast:Narrow'
-                type           = 'Container'
-                roundedCorners = $true
-                showBorder     = $true
-            }
-        }
-        if ($policyChange -eq $true) {
-            $notification = $true
-            Write-Output "Updating policy - $policyDisplayName from $minVersion to $latestBuild"
-            $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
-            Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
-            try {
-                Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
-            }
-            catch {
-                Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
-                continue
-            }
-        }
-        else {
-            Write-Output "No update needed for policy - $policyDisplayName"
-        }
-    }
-}
-#endregion
 #endregion
 
 #region mam
-#region Android
 $policyType = 'App Protection'
-Write-Output "`nRetrieving Android App Protection Policies..."
+
+#region Android
+$os = 'Android'
+$osImageUrl = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/android.png'
 $androidAppProtectionPolicies = Get-AppProtectionPolicy -os Android | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
-Write-Output "Found $($androidAppProtectionPolicies.Count) Android App Protection Policies with minimum OS version requirements."
+Write-Output "Found $($androidAppProtectionPolicies.Count) $os App Protection Policies with minimum OS version requirements."
 
 if ($null -ne $androidAppProtectionPolicies) {
     $androidSupported = Get-EndOfLifeDate -os Android
@@ -1008,11 +1036,10 @@ if ($null -ne $androidAppProtectionPolicies) {
         $newRequired = "$($androidSupported[1]).0"
     }
 
-
     foreach ($appProtectionPolicy in $androidAppProtectionPolicies) {
         $policyChange = $false
         $policyDisplayName = $appProtectionPolicy.displayName
-        Write-Output "`nChecking Android App Protection Policy: $policyDisplayName"
+        Write-Output "`nChecking $os App Protection Policy: $policyDisplayName"
         $minWarning = $appProtectionPolicy.minimumWarningOsVersion
         $minRequired = $appProtectionPolicy.minimumRequiredOsVersion
         $minWipe = $appProtectionPolicy.minimumWipeOsVersion
@@ -1040,7 +1067,7 @@ if ($null -ne $androidAppProtectionPolicies) {
                                     @{
                                         isSubtle = $true
                                         size     = 'Small'
-                                        text     = "$policyType"
+                                        text     = "$policyType - $os"
                                         wrap     = $true
                                         type     = 'TextBlock'
                                     }
@@ -1097,7 +1124,7 @@ if ($null -ne $androidAppProtectionPolicies) {
                                     @{
                                         isSubtle = $true
                                         size     = 'Small'
-                                        text     = "$policyType"
+                                        text     = "$policyType - $os"
                                         wrap     = $true
                                         type     = 'TextBlock'
                                     }
@@ -1154,7 +1181,7 @@ if ($null -ne $androidAppProtectionPolicies) {
                                     @{
                                         isSubtle = $true
                                         size     = 'Small'
-                                        text     = "$policyType"
+                                        text     = "$policyType - $os"
                                         wrap     = $true
                                         type     = 'TextBlock'
                                     }
@@ -1206,10 +1233,11 @@ if ($null -ne $androidAppProtectionPolicies) {
 #endregion
 
 #region iOS
-$osImageUrl = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/apple.png'
-Write-Output "`nRetrieving iOS App Protection Policies..."
+$os = 'iOS/iPadOS'
+$osImageUrl = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/apple.png'
+Write-Output "`nRetrieving $os App Protection Policies..."
 $iOSAppProtectionPolicies = Get-AppProtectionPolicy -os iOS | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
-Write-Output "Found $($iOSAppProtectionPolicies.Count) iOS App Protection Policies with minimum OS version requirements."
+Write-Output "Found $($iOSAppProtectionPolicies.Count) $os App Protection Policies with minimum OS version requirements."
 
 if ($null -ne $iOSAppProtectionPolicies) {
     $iOSSupported = Get-EndOfLifeDate -os iOS
@@ -1224,7 +1252,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
     foreach ($appProtectionPolicy in $iOSAppProtectionPolicies) {
         $policyChange = $false
         $policyDisplayName = $appProtectionPolicy.displayName
-        Write-Output "`nChecking iOS App Protection Policy: $policyDisplayName"
+        Write-Output "`nChecking $os App Protection Policy: $policyDisplayName"
         $minWarning = $appProtectionPolicy.minimumWarningOsVersion
         $minRequired = $appProtectionPolicy.minimumRequiredOsVersion
         $minWipe = $appProtectionPolicy.minimumWipeOsVersion
@@ -1252,7 +1280,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
                                     @{
                                         isSubtle = $true
                                         size     = 'Small'
-                                        text     = "$policyType"
+                                        text     = "$policyType - $os"
                                         wrap     = $true
                                         type     = 'TextBlock'
                                     }
@@ -1309,7 +1337,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
                                     @{
                                         isSubtle = $true
                                         size     = 'Small'
-                                        text     = "$policyType"
+                                        text     = "$policyType - $os"
                                         wrap     = $true
                                         type     = 'TextBlock'
                                     }
@@ -1366,7 +1394,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
                                     @{
                                         isSubtle = $true
                                         size     = 'Small'
-                                        text     = "$policyType"
+                                        text     = "$policyType - $os"
                                         wrap     = $true
                                         type     = 'TextBlock'
                                     }
@@ -1416,6 +1444,222 @@ if ($null -ne $iOSAppProtectionPolicies) {
     }
 }
 #endregion
+
+#region Windows
+$os = 'Windows'
+$osImageUrl = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/windows.png'
+$windowsAppProtectionPolicies = Get-AppProtectionPolicy -os Windows | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null -or $_.minimumWipeOsVersion -ne $null }
+Write-Output "Found $($windowsAppProtectionPolicies.Count) $os App Protection Policies with minimum OS version requirements."
+
+if ($null -ne $windowsAppProtectionPolicies) {
+    foreach ($appProtectionPolicy in $windowsAppProtectionPolicies) {
+
+        $policyChange = $false
+        $policyDisplayName = $appProtectionPolicy.displayName
+        Write-Output "`nChecking $os App Protection Policy: $policyDisplayName"
+        $minRequired = $appProtectionPolicy.minimumRequiredOsVersion
+        $minWarning = $appProtectionPolicy.minimumWarningOsVersion
+        $minWipe = $appProtectionPolicy.minimumWipeOsVersion
+
+        if ($minRequired.count -ne 0) {
+            $newRequired = Get-WindowsUpdateBuild -osVersion $minRequired.split('.')[2]
+        }
+        if ($minWarning.count -ne 0) {
+            $newWarning = Get-WindowsUpdateBuild -osVersion $minWarning.split('.')[2]
+        }
+        if ($minWipe.count -ne 0) {
+            $newWipe = Get-WindowsUpdateBuild -osVersion $minWipe.split('.')[2]
+        }
+
+        if ($null -ne $minRequired -and $minRequired -ne $newRequired) {
+            $policyChange = $true
+            Write-Output "Updating policy - $policyDisplayName minOS block from $minRequired to $newRequired"
+            $appProtectionPolicy.minimumRequiredOsVersion = $newRequired
+            $teamsItems += @{
+                items          = @(
+                    @{
+                        columns = @(
+                            @{
+                                items = @(
+                                    @{
+                                        type = 'Image'
+                                        url  = "$osImageUrl"
+                                        size = 'Medium'
+                                    }
+                                )
+                                type  = 'Column'
+                                width = 'auto'
+                            }
+                            @{
+                                items = @(
+                                    @{
+                                        isSubtle = $true
+                                        size     = 'Small'
+                                        text     = "$policyType - $os"
+                                        wrap     = $true
+                                        type     = 'TextBlock'
+                                    }
+                                    @{
+                                        text    = "$policyDisplayName"
+                                        weight  = 'Bolder'
+                                        wrap    = $true
+                                        type    = 'TextBlock'
+                                        spacing = 'None'
+                                    }
+                                    @{
+                                        text    = "Minimum blocked OS version updated from $minRequired to $newRequired"
+                                        wrap    = $true
+                                        type    = 'TextBlock'
+                                        spacing = 'None'
+                                    }
+                                )
+                                type  = 'Column'
+                                width = 'stretch'
+                            }
+                        )
+                        type    = 'ColumnSet'
+                    }
+                )
+                style          = 'emphasis'
+                spacing        = 'Small'
+                targetWidth    = 'atLeast:Narrow'
+                type           = 'Container'
+                roundedCorners = $true
+                showBorder     = $true
+            }
+        }
+        if ($null -ne $minWarning -and $minWarning -ne $newWarning) {
+            $policyChange = $true
+            Write-Output "Updating policy - $policyDisplayName minOS warning from $minWarning to $newWarning"
+            $appProtectionPolicy.minimumWarningOsVersion = $newWarning
+            $teamsItems += @{
+                items          = @(
+                    @{
+                        columns = @(
+                            @{
+                                items = @(
+                                    @{
+                                        type = 'Image'
+                                        url  = "$osImageUrl"
+                                        size = 'Medium'
+                                    }
+                                )
+                                type  = 'Column'
+                                width = 'auto'
+                            }
+                            @{
+                                items = @(
+                                    @{
+                                        isSubtle = $true
+                                        size     = 'Small'
+                                        text     = "$policyType - $os"
+                                        wrap     = $true
+                                        type     = 'TextBlock'
+                                    }
+                                    @{
+                                        text    = "$policyDisplayName"
+                                        weight  = 'Bolder'
+                                        wrap    = $true
+                                        type    = 'TextBlock'
+                                        spacing = 'None'
+                                    }
+                                    @{
+                                        text    = "Minimum warning OS version updated from $minWarning to $newWarning"
+                                        wrap    = $true
+                                        type    = 'TextBlock'
+                                        spacing = 'None'
+                                    }
+                                )
+                                type  = 'Column'
+                                width = 'stretch'
+                            }
+                        )
+                        type    = 'ColumnSet'
+                    }
+                )
+                style          = 'emphasis'
+                spacing        = 'Small'
+                targetWidth    = 'atLeast:Narrow'
+                type           = 'Container'
+                roundedCorners = $true
+                showBorder     = $true
+            }
+        }
+        if ($null -ne $minWipe -and $minWipe -ne $newWipe) {
+            $policyChange = $true
+            Write-Output "Updating policy - $policyDisplayName minOS wipe from $minWipe to $newWipe"
+            $appProtectionPolicy.minimumWipeOsVersion = $newWipe
+            $teamsItems += @{
+                items          = @(
+                    @{
+                        columns = @(
+                            @{
+                                items = @(
+                                    @{
+                                        type = 'Image'
+                                        url  = "$osImageUrl"
+                                        size = 'Medium'
+                                    }
+                                )
+                                type  = 'Column'
+                                width = 'auto'
+                            }
+                            @{
+                                items = @(
+                                    @{
+                                        isSubtle = $true
+                                        size     = 'Small'
+                                        text     = "$policyType - $os"
+                                        wrap     = $true
+                                        type     = 'TextBlock'
+                                    }
+                                    @{
+                                        text    = "$policyDisplayName"
+                                        weight  = 'Bolder'
+                                        wrap    = $true
+                                        type    = 'TextBlock'
+                                        spacing = 'None'
+                                    }
+                                    @{
+                                        text    = "Minimum wipe OS version updated from $minWipe to $newWipe"
+                                        wrap    = $true
+                                        type    = 'TextBlock'
+                                        spacing = 'None'
+                                    }
+                                )
+                                type  = 'Column'
+                                width = 'stretch'
+                            }
+                        )
+                        type    = 'ColumnSet'
+                    }
+                )
+                style          = 'emphasis'
+                spacing        = 'Small'
+                targetWidth    = 'atLeast:Narrow'
+                type           = 'Container'
+                roundedCorners = $true
+                showBorder     = $true
+            }
+        }
+
+        if ($policyChange -eq $true) {
+            $jsonBody = $appProtectionPolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
+            Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
+            try {
+                Set-AppProtectionPolicy -os Windows -Id $appProtectionPolicy.id -JSON $jsonBody
+            }
+            catch {
+                Write-Error "Failed to update policy $policyDisplayName - $_.Exception.Message"
+                continue
+            }
+        }
+        else {
+            Write-Output "No update needed for policy - $policyDisplayName"
+        }
+    }
+}
+#endregion
 #endregion
 
 #region teams notification
@@ -1424,12 +1668,12 @@ if ($notification -eq $true) {
         type      = 'AdaptiveCard'
         '$schema' = 'https://adaptivecards.io/schemas/adaptive-card.json'
         version   = '1.5'
-        speak     = 'Microsoft Intune Blueprint Updates'
+        speak     = 'Microsoft Intune Updates'
         body      = @(
             @{
                 type   = 'TextBlock'
                 size   = 'Large'
-                text   = 'Microsoft Intune Blueprint Updates'
+                text   = 'Microsoft Intune Updates'
                 weight = 'Bolder'
                 wrap   = $false
             }
