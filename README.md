@@ -4,7 +4,7 @@ The IntuneOSCompliance script is a PowerShell tool designed to automatically upd
 
 ## ⚠ Public Preview Notice
 
-IntuneAppAssigner is currently in Public Preview, meaning that although the it is functional, you may encounter issues or bugs with the script.
+IntuneOSCompliance is currently in Public Preview, meaning that although the it is functional, you may encounter issues or bugs with the script.
 
 > [!TIP]
 > If you do encounter bugs, want to contribute, submit feedback or suggestions, please create an issue.
