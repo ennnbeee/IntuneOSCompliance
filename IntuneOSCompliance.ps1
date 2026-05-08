@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 0.1.2
+.VERSION 0.1.3
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -13,6 +13,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.1.3 - Logo and output formatting updates
 v0.1.2 - Updated logo source and formatting
 v0.1.1 - Added support for Windows App Protection Policies and Windows 10
 v0.1.0 - Initial release.
@@ -60,10 +61,13 @@ App Authentication
 param(
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether a Microsoft Teams notification should be sent if any policies were updated')]
-    [bool]$teamsNotify = $true,
+    [bool]$teamsNotify = $false,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
     [String]$teamsWebHook,
+
+    [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
+    [bool]$report = $true,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Id of the Entra ID tenant to connect to')]
     [ValidateLength(36, 36)]
@@ -78,6 +82,11 @@ param(
     [String]$appSecret
 
 )
+
+if ($teamsNotify -eq $true -and [string]::IsNullOrEmpty($teamsWebHook)) {
+    Write-Error "The teamsWebHook parameter is required when -teamsNotify is set to `$true."
+    break
+}
 
 #region functions
 function Test-JSONData {
@@ -442,10 +451,14 @@ function Get-EndOfLifeDate {
 #endregion
 
 #region variables
-$androidLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/android.png'
-$macOSLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/apple.png'
-$iOSLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/apple.png'
-$windowsLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/windows.png'
+$androidCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and-com.png'
+$androidMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and-mam.png'
+$iOSCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/ios-com.png'
+$iOSMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/ios-mam.png'
+$windowsCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win-com.png'
+$windowsMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win-mam.png'
+$macOSCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/mac-com.png'
+
 $scopes = @('DeviceManagementApps.ReadWrite.All', 'DeviceManagementConfiguration.ReadWrite.All')
 $teamsItems = @()
 $dateTime = Get-Date -Format 'HH:mm:ss dd/MM/yyyy'
@@ -469,8 +482,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.2 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-07' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.3 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-08' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -540,7 +553,7 @@ $compliancePolicies = Get-DeviceCompliancePolicy
 if ($null -ne $compliancePolicies) {
     #region Windows
     $os = 'Windows'
-    $osImageUrl = $windowsLogo
+    $osImageUrl = $windowsCompliance
     $windowsCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.windows10CompliancePolicy' -and ($_.validOperatingSystemBuildRanges -ne $null -or $_.osMinimumVersion -ne $null) }
     Write-Host "`nFound $($windowsCompliancePolicies.Count) $os $policyType Policies with build ranges or Minimum versions." -ForegroundColor Green
 
@@ -573,6 +586,7 @@ if ($null -ne $compliancePolicies) {
                 if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                     $policyChange = $true
                     $compliancePolicy.osMinimumVersion = $latestBuild
+                    Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Magenta
                     $teamsItems += @{
                         items          = @(
                             @{
@@ -635,6 +649,7 @@ if ($null -ne $compliancePolicies) {
                     if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                         $policyChange = $true
                         $buildRange.lowestVersion = $latestBuild
+                        Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Magenta
                         $teamsItems += @{
                             items          = @(
                                 @{
@@ -690,9 +705,8 @@ if ($null -ne $compliancePolicies) {
                     }
                 }
             }
-            if ($policyChange -eq $true) {
-
-                Write-Host "Updating $os $policyType policy from $minVersion to $latestBuild" -ForegroundColor Magenta
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
                 try {
@@ -703,6 +717,9 @@ if ($null -ne $compliancePolicies) {
                     continue
                 }
             }
+            elseif ($policyChange -eq $true -and $report -eq $true) {
+                Write-Host "$os $policyType policy does need updating" -ForegroundColor Yellow
+            }
             else {
                 Write-Host "No update needed for $os $policyType policy" -ForegroundColor Yellow
             }
@@ -712,7 +729,7 @@ if ($null -ne $compliancePolicies) {
 
     #region macOS
     $os = 'macOS'
-    $osImageUrl = $macOSLogo
+    $osImageUrl = $macOSCompliance
     $macOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.macOSCompliancePolicy' -and $_.osMinimumVersion -ne $null }
     Write-Host "`nFound $($macOSCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Green
 
@@ -738,6 +755,7 @@ if ($null -ne $compliancePolicies) {
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
+                Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Magenta
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -791,9 +809,8 @@ if ($null -ne $compliancePolicies) {
                     showBorder     = $true
                 }
             }
-            if ($policyChange -eq $true) {
-
-                Write-Host "Updating $os $policyType policy from $minVersion to $latestBuild" -ForegroundColor Magenta
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
                 try {
@@ -804,6 +821,9 @@ if ($null -ne $compliancePolicies) {
                     continue
                 }
             }
+            elseif ($policyChange -eq $true -and $report -eq $true) {
+                Write-Host "$os $policyType policy does need updating" -ForegroundColor Yellow
+            }
             else {
                 Write-Host "No update needed for $os $policyType policy" -ForegroundColor Yellow
             }
@@ -813,7 +833,7 @@ if ($null -ne $compliancePolicies) {
 
     #region Apple mobile
     $os = 'Apple mobile'
-    $osImageUrl = $iOSLogo
+    $osImageUrl = $iOSCompliance
     $iOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.iosCompliancePolicy' -and $_.osMinimumVersion -ne $null }
     Write-Host "`nFound $($iOSCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Green
 
@@ -839,6 +859,7 @@ if ($null -ne $compliancePolicies) {
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
+                Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Magenta
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -892,9 +913,8 @@ if ($null -ne $compliancePolicies) {
                     showBorder     = $true
                 }
             }
-            if ($policyChange -eq $true) {
-
-                Write-Host "Updating $os $policyType policy from $minVersion to $latestBuild" -ForegroundColor Magenta
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
                 try {
@@ -906,6 +926,9 @@ if ($null -ne $compliancePolicies) {
                     continue
                 }
             }
+            elseif ($policyChange -eq $true -and $report -eq $true) {
+                Write-Host "$os $policyType policy does need updating" -ForegroundColor Yellow
+            }
             else {
                 Write-Host "No update needed for $os $policyType policy" -ForegroundColor Yellow
             }
@@ -915,7 +938,7 @@ if ($null -ne $compliancePolicies) {
 
     #region Android
     $os = 'Android'
-    $osImageUrl = $androidLogo
+    $osImageUrl = $androidCompliance
     $androidCompliancePolicies = $compliancePolicies | Where-Object { ($_.'@odata.type' -eq '#microsoft.graph.androidWorkProfileCompliancePolicy' -or $_.'@odata.type' -eq '#microsoft.graph.androidDeviceOwnerCompliancePolicy') -and $_.osMinimumVersion -ne $null }
     Write-Host "`nFound $($androidCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Green
 
@@ -942,6 +965,7 @@ if ($null -ne $compliancePolicies) {
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.minAndroidSecurityPatchLevel = $latestBuild
+                Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Magenta
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -995,9 +1019,8 @@ if ($null -ne $compliancePolicies) {
                     showBorder     = $true
                 }
             }
-            if ($policyChange -eq $true) {
-
-                Write-Host "Updating $os $policyType policy from $minVersion to $latestBuild" -ForegroundColor Magenta
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
                 try {
@@ -1007,6 +1030,9 @@ if ($null -ne $compliancePolicies) {
                     Write-Error "Failed to update $os $policyType policy - $_.Exception.Message"
                     continue
                 }
+            }
+            elseif ($policyChange -eq $true -and $report -eq $true) {
+                Write-Host "$os $policyType policy does need updating" -ForegroundColor Yellow
             }
             else {
                 Write-Host "No update needed for $os $policyType policy" -ForegroundColor Yellow
@@ -1023,7 +1049,7 @@ $policyType = 'App Protection'
 
 #region Android
 $os = 'Android'
-$osImageUrl = $androidLogo
+$osImageUrl = $androidMAM
 $androidAppProtectionPolicies = Get-AppProtectionPolicy -os Android | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
 Write-Host "`nFound $($androidAppProtectionPolicies.Count) $os $policyType Policies with minimum OS version requirements." -ForegroundColor Green
 
@@ -1225,7 +1251,7 @@ if ($null -ne $androidAppProtectionPolicies) {
             }
         }
 
-        if ($policyChange -eq $true) {
+        if ($policyChange -eq $true -and $report -eq $false) {
             $jsonBody = $appProtectionPolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
             Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
             try {
@@ -1236,6 +1262,9 @@ if ($null -ne $androidAppProtectionPolicies) {
                 continue
             }
         }
+        elseif ($policyChange -eq $true -and $report -eq $true) {
+            Write-Host "$os $policyType policy does need updating" -ForegroundColor Yellow
+        }
         else {
             Write-Host "No update needed for $os $policyType policy" -ForegroundColor Yellow
         }
@@ -1245,7 +1274,7 @@ if ($null -ne $androidAppProtectionPolicies) {
 
 #region Apple mobile
 $os = 'Apple mobile'
-$osImageUrl = $iOSLogo
+$osImageUrl = $iOSMAM
 $iOSAppProtectionPolicies = Get-AppProtectionPolicy -os iOS | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
 Write-Host "`nFound $($iOSAppProtectionPolicies.Count) $os $policyType Policies with minimum OS version requirements." -ForegroundColor Green
 
@@ -1447,7 +1476,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
             }
         }
 
-        if ($policyChange -eq $true) {
+        if ($policyChange -eq $true -and $report -eq $false) {
             $jsonBody = $appProtectionPolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
             Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
             try {
@@ -1458,6 +1487,9 @@ if ($null -ne $iOSAppProtectionPolicies) {
                 continue
             }
         }
+        elseif ($policyChange -eq $true -and $report -eq $true) {
+            Write-Host "$os $policyType policy does need updating" -ForegroundColor Yellow
+        }
         else {
             Write-Host "No update needed for $os $policyType policy" -ForegroundColor Yellow
         }
@@ -1467,7 +1499,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
 
 #region Windows
 $os = 'Windows'
-$osImageUrl = $windowsLogo
+$osImageUrl = $windowsMAM
 $windowsAppProtectionPolicies = Get-AppProtectionPolicy -os Windows | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null -or $_.minimumWipeOsVersion -ne $null }
 Write-Host "`nFound $($windowsAppProtectionPolicies.Count) $os App Protection Policies with minimum OS version requirements." -ForegroundColor Green
 
@@ -1663,7 +1695,7 @@ if ($null -ne $windowsAppProtectionPolicies) {
             }
         }
 
-        if ($policyChange -eq $true) {
+        if ($policyChange -eq $true -and $report -eq $false) {
             $jsonBody = $appProtectionPolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
             Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
             try {
@@ -1674,6 +1706,9 @@ if ($null -ne $windowsAppProtectionPolicies) {
                 continue
             }
         }
+        elseif ($policyChange -eq $true -and $report -eq $true) {
+            Write-Host "$os $policyType policy does need updating" -ForegroundColor Yellow
+        }
         else {
             Write-Host "No update needed for $os $policyType policy" -ForegroundColor Yellow
         }
@@ -1683,7 +1718,7 @@ if ($null -ne $windowsAppProtectionPolicies) {
 #endregion
 
 #region teams notification
-if ($teamsNotify -eq $true) {
+if ($teamsNotify -eq $true -and $report -eq $false) {
     $teamsNotificationJSON = @{
         type      = 'AdaptiveCard'
         '$schema' = 'https://adaptivecards.io/schemas/adaptive-card.json'
