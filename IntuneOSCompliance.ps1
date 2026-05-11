@@ -715,6 +715,9 @@ if ($null -ne $compliancePolicies) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
                 Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+            }
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -767,9 +770,6 @@ if ($null -ne $compliancePolicies) {
                     roundedCorners = $true
                     showBorder     = $true
                 }
-            }
-            if ($policyChange -eq $true -and $report -eq $false) {
-                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
                 try {
@@ -819,6 +819,9 @@ if ($null -ne $compliancePolicies) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
                 Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+            }
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -871,9 +874,6 @@ if ($null -ne $compliancePolicies) {
                     roundedCorners = $true
                     showBorder     = $true
                 }
-            }
-            if ($policyChange -eq $true -and $report -eq $false) {
-                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
                 try {
@@ -925,6 +925,9 @@ if ($null -ne $compliancePolicies) {
                 $policyChange = $true
                 $compliancePolicy.minAndroidSecurityPatchLevel = $latestBuild
                 Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+            }
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -977,9 +980,6 @@ if ($null -ne $compliancePolicies) {
                     roundedCorners = $true
                     showBorder     = $true
                 }
-            }
-            if ($policyChange -eq $true -and $report -eq $false) {
-                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
                 try {
