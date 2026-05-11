@@ -13,6 +13,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.1.4 -
 v0.1.3 - Logo and output formatting updates
 v0.1.2 - Updated logo source and formatting
 v0.1.1 - Added support for Windows App Protection Policies and Windows 10
@@ -22,7 +23,7 @@ v0.1.0 - Initial release.
 #>
 <#
 .SYNOPSIS
-
+Updates Microsoft Intune device compliance and app protection policies to ensure the minimum operating system build versions are up to date.
 
 .DESCRIPTION
 
@@ -61,13 +62,13 @@ App Authentication
 param(
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether a Microsoft Teams notification should be sent if any policies were updated')]
-    [bool]$teamsNotify = $true,
+    [bool]$teamsNotify = $false,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
     [String]$teamsWebHook,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
-    [bool]$report = $false,
+    [bool]$report = $true,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Id of the Entra ID tenant to connect to')]
     [ValidateLength(36, 36)]
@@ -482,8 +483,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.3 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-08' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.4 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-11' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -1525,7 +1526,7 @@ if ($null -ne $windowsAppProtectionPolicies) {
 
         if ($null -ne $minRequired -and $minRequired -ne $newRequired) {
             $policyChange = $true
-            Write-Host "Updating policy minOS block from $minRequired to $newRequired" -ForegroundColor Cyan
+            Write-Host "Updating policy minOS block from $minRequired to $newRequired" -ForegroundColor Magenta
             $appProtectionPolicy.minimumRequiredOsVersion = $newRequired
             $teamsItems += @{
                 items          = @(
@@ -1582,7 +1583,7 @@ if ($null -ne $windowsAppProtectionPolicies) {
         }
         if ($null -ne $minWarning -and $minWarning -ne $newWarning) {
             $policyChange = $true
-            Write-Host "Updating policy minOS warning from $minWarning to $newWarning" -ForegroundColor Cyan
+            Write-Host "Updating policy minOS warning from $minWarning to $newWarning" -ForegroundColor Magenta
             $appProtectionPolicy.minimumWarningOsVersion = $newWarning
             $teamsItems += @{
                 items          = @(
@@ -1639,7 +1640,7 @@ if ($null -ne $windowsAppProtectionPolicies) {
         }
         if ($null -ne $minWipe -and $minWipe -ne $newWipe) {
             $policyChange = $true
-            Write-Host "Updating policy minOS wipe from $minWipe to $newWipe" -ForegroundColor Cyan
+            Write-Host "Updating policy minOS wipe from $minWipe to $newWipe" -ForegroundColor Magenta
             $appProtectionPolicy.minimumWipeOsVersion = $newWipe
             $teamsItems += @{
                 items          = @(
