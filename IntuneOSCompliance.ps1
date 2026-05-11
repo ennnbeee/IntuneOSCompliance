@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 0.1.3
+.VERSION 0.1.4
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -13,7 +13,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
-v0.1.4 -
+v0.1.4 - Combined notifications for Windows builds and app protection policies
 v0.1.3 - Logo and output formatting updates
 v0.1.2 - Updated logo source and formatting
 v0.1.1 - Added support for Windows App Protection Policies and Windows 10
@@ -561,6 +561,7 @@ if ($null -ne $compliancePolicies) {
     if ($null -ne $windowsCompliancePolicies) {
         $windowsVersions = @()
         $windowsBuilds = @()
+        $groupedUpdates = @()
         $windowsCompliancePolicies.osMinimumVersion | ForEach-Object {
             if ($null -ne $_) {
                 $windowsVersions += $_.split('.')[2]
@@ -588,58 +589,7 @@ if ($null -ne $compliancePolicies) {
                     $policyChange = $true
                     $compliancePolicy.osMinimumVersion = $latestBuild
                     Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
-                    $teamsItems += @{
-                        items          = @(
-                            @{
-                                columns = @(
-                                    @{
-                                        items = @(
-                                            @{
-                                                type = 'Image'
-                                                url  = "$osImageUrl"
-                                                size = 'Medium'
-                                            }
-                                        )
-                                        type  = 'Column'
-                                        width = 'auto'
-                                    }
-                                    @{
-                                        items = @(
-                                            @{
-                                                isSubtle = $true
-                                                size     = 'Small'
-                                                text     = "$policyType - $os"
-                                                wrap     = $true
-                                                type     = 'TextBlock'
-                                            }
-                                            @{
-                                                text    = "$policyDisplayName"
-                                                weight  = 'Bolder'
-                                                wrap    = $true
-                                                type    = 'TextBlock'
-                                                spacing = 'None'
-                                            }
-                                            @{
-                                                text    = "Minimum operating system build version updated from $minVersion to $latestBuild"
-                                                wrap    = $true
-                                                type    = 'TextBlock'
-                                                spacing = 'None'
-                                            }
-                                        )
-                                        type  = 'Column'
-                                        width = 'stretch'
-                                    }
-                                )
-                                type    = 'ColumnSet'
-                            }
-                        )
-                        style          = 'emphasis'
-                        spacing        = 'Small'
-                        targetWidth    = 'atLeast:Narrow'
-                        type           = 'Container'
-                        roundedCorners = $true
-                        showBorder     = $true
-                    }
+                    $groupedUpdates += "Minimum operating system version updated from $minVersion to $latestBuild"
                 }
             }
             if (![string]::IsNullOrEmpty($compliancePolicy.validOperatingSystemBuildRanges)) {
@@ -650,63 +600,71 @@ if ($null -ne $compliancePolicies) {
                     if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                         $policyChange = $true
                         $buildRange.lowestVersion = $latestBuild
-                        Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $teamsItems += @{
-                            items          = @(
-                                @{
-                                    columns = @(
-                                        @{
-                                            items = @(
-                                                @{
-                                                    type = 'Image'
-                                                    url  = "$osImageUrl"
-                                                    size = 'Medium'
-                                                }
-                                            )
-                                            type  = 'Column'
-                                            width = 'auto'
-                                        }
-                                        @{
-                                            items = @(
-                                                @{
-                                                    isSubtle = $true
-                                                    size     = 'Small'
-                                                    text     = "$policyType - $os"
-                                                    wrap     = $true
-                                                    type     = 'TextBlock'
-                                                }
-                                                @{
-                                                    text    = "$policyDisplayName"
-                                                    weight  = 'Bolder'
-                                                    wrap    = $true
-                                                    type    = 'TextBlock'
-                                                    spacing = 'None'
-                                                }
-                                                @{
-                                                    text    = "Minimum operating system version updated from $minVersion to $latestBuild"
-                                                    wrap    = $true
-                                                    type    = 'TextBlock'
-                                                    spacing = 'None'
-                                                }
-                                            )
-                                            type  = 'Column'
-                                            width = 'stretch'
-                                        }
-                                    )
-                                    type    = 'ColumnSet'
-                                }
-                            )
-                            style          = 'emphasis'
-                            spacing        = 'Small'
-                            targetWidth    = 'atLeast:Narrow'
-                            type           = 'Container'
-                            roundedCorners = $true
-                            showBorder     = $true
-                        }
+                        Write-Host "$os $policyType policy will be updated for $($buildRange.description)from $minVersion to $latestBuild" -ForegroundColor Yellow
+                        $groupedUpdates += "Minimum operating system build version for $($buildRange.description) updated from $minVersion to $latestBuild"
                     }
                 }
             }
             if ($policyChange -eq $true -and $report -eq $false) {
+                if ($groupedUpdates.count -gt 1) {
+                    [string]$groupedUpdates = $groupedUpdates -join "`n"
+                }
+                else {
+                    [string]$groupedUpdates = $groupedUpdates
+                }
+
+                $teamsItems += @{
+                    items          = @(
+                        @{
+                            columns = @(
+                                @{
+                                    items = @(
+                                        @{
+                                            type = 'Image'
+                                            url  = "$osImageUrl"
+                                            size = 'Medium'
+                                        }
+                                    )
+                                    type  = 'Column'
+                                    width = 'auto'
+                                }
+                                @{
+                                    items = @(
+                                        @{
+                                            isSubtle = $true
+                                            size     = 'Small'
+                                            text     = "$policyType - $os"
+                                            wrap     = $true
+                                            type     = 'TextBlock'
+                                        }
+                                        @{
+                                            text    = "$policyDisplayName"
+                                            weight  = 'Bolder'
+                                            wrap    = $true
+                                            type    = 'TextBlock'
+                                            spacing = 'None'
+                                        }
+                                        @{
+                                            text    = "$groupedUpdates"
+                                            wrap    = $true
+                                            type    = 'TextBlock'
+                                            spacing = 'None'
+                                        }
+                                    )
+                                    type  = 'Column'
+                                    width = 'stretch'
+                                }
+                            )
+                            type    = 'ColumnSet'
+                        }
+                    )
+                    style          = 'emphasis'
+                    spacing        = 'Small'
+                    targetWidth    = 'atLeast:Narrow'
+                    type           = 'Container'
+                    roundedCorners = $true
+                    showBorder     = $true
+                }
                 Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
