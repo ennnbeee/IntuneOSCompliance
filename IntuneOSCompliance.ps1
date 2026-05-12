@@ -70,7 +70,7 @@ param(
     [bool]$teamsNotify = $true,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
-    [String]$teamsWebHook = 'https://default437e8ffb3030469a99dae5b5279080.10.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/56ce191b90f24c078097e62ea99fd715/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=SJpsluiMrcuXmirm3lB0xlfO9EVHNSmMwRbaoveZUDw',
+    [String]$teamsWebHook,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
     [bool]$report = $true,
@@ -90,7 +90,7 @@ param(
 )
 
 if ($teamsNotify -eq $true -and [string]::IsNullOrEmpty($teamsWebHook)) {
-    Write-Error "The teamsWebHook parameter is required when -teamsNotify is set to `$true."
+    Write-Error "The teamsWebHook parameter is required when teamsNotify is set to `$true."
     break
 }
 
