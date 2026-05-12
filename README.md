@@ -49,12 +49,12 @@ Running the script without selecting any additional parameters will run the Powe
 To allow the PowerShell script to send details of any changes made to a Compliance or App Protection policy, you will need to create an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook?tabs=dotnet) and use this URL when running the script.
 
 ```PowerShell
-.\IntuneOSCompliance.ps1 -report $false -notification $true -teamsWebHook 'http://yourteamswebhookurl.environment.api.powerplatform.com'
+.\IntuneOSCompliance.ps1 -report $false -teamsWebHook 'http://yourteamswebhookurl.environment.api.powerplatform.com'
 ```
 
 ### Report Mode
 
-Running the PowerShell script in report only mode will disable sending a Teams Webhook and disable updating any Compliance or App Protection policy.
+Running the PowerShell script in report only mode will disable sending a Microsoft Teams Webhook and disable updating any Compliance or App Protection policy.
 
 ```PowerShell
 .\IntuneOSCompliance.ps1 -report $true

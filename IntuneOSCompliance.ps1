@@ -8,7 +8,7 @@
 .TAGS Graph Intune Windows Android iOS macOS Apps Compliance
 .LICENSEURI https://github.com/ennnbeee/IntuneOSCompliance/blob/main/LICENSE
 .PROJECTURI https://github.com/ennnbeee/IntuneOSCompliance
-.ICONURI https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/ioc-icon.png
+.ICONURI https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win-com.png
 .EXTERNALMODULEDEPENDENCIES Microsoft.Graph.Authentication
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
@@ -28,9 +28,6 @@ Updates Microsoft Intune device compliance and app protection policies to ensure
 
 .DESCRIPTION
 Uses available APIs to check the latest available OS builds for supported platforms and compares these to the minimum OS build versions configured in Intune device compliance and app protection policies. If any policies are found to be out of date, they can be automatically updated with the latest build numbers.
-
-.PARAMETER notification
-Set to $true to send a Microsoft Teams notification if any policies were updated. Default is $true.
 
 .PARAMETER teamsWebHook
 Provide the Microsoft Teams webhook URL to send notifications to. If not provided, notifications will not be sent.
@@ -54,20 +51,17 @@ Interactive Authentication with no policy changes or notifications, just reporti
 
 .EXAMPLE
 Pass through Authentication with policy changes and Microsoft Teams notifications enabled.
-.\IntuneOSCompliance.ps1 -tenantId '437e8ffb-3030-469a-99da-e5b527908099' -report $false -teamsNotify $true -teamsWebHook 'https://customwebhookurl'
+.\IntuneOSCompliance.ps1 -tenantId '437e8ffb-3030-469a-99da-e5b527908099' -report $false -teamsWebHook 'https://customwebhookurl'
 
 .EXAMPLE
 App Authentication with policy changes and Microsoft Teams notifications enabled.
-.\IntuneOSCompliance.ps1 -tenantId '437e8ffb-3030-469a-99da-e5b527908099' -appId '799ebcfa-ca81-4e72-baaf-a35126464d67' -appSecret 'g708Q~uof4xo9dU_1EjGQIuUr0UyBHNZmY2m3dy6' -report $false -teamsNotify $true -teamsWebHook 'https://customwebhookurl'
+.\IntuneOSCompliance.ps1 -tenantId '437e8ffb-3030-469a-99da-e5b527908099' -appId '799ebcfa-ca81-4e72-baaf-a35126464d67' -appSecret 'g708Q~uof4xo9dU_1EjGQIuUr0UyBHNZmY2m3dy6' -report $false -teamsWebHook 'https://customwebhookurl'
 
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Default')]
 
 param(
-
-    [Parameter(Mandatory = $false, HelpMessage = 'Sets whether a Microsoft Teams notification should be sent if any policies were updated')]
-    [bool]$teamsNotify = $true,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
     [String]$teamsWebHook,
@@ -88,11 +82,6 @@ param(
     [String]$appSecret
 
 )
-
-if ($teamsNotify -eq $true -and [string]::IsNullOrEmpty($teamsWebHook)) {
-    Write-Error "The teamsWebHook parameter is required when teamsNotify is set to `$true."
-    break
-}
 
 #region functions
 function Test-JSONData {
@@ -1292,7 +1281,7 @@ if ($null -ne $androidAppProtectionPolicies) {
 #endregion
 
 #region teams notification
-if ($teamsNotify -eq $true -and $report -eq $false -and $policyChange -eq $true) {
+if (![string]::IsNullOrEmpty($teamsWebHook) -and $report -eq $false -and $teamsItems.Count -ne 0) {
     $teamsNotificationJSON = @{
         type      = 'AdaptiveCard'
         '$schema' = 'https://adaptivecards.io/schemas/adaptive-card.json'
