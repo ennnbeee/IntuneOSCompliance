@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 0.1.5
+.VERSION 0.1.6
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -13,6 +13,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.1.6 - Added notification for operating systems no longer supported
 v0.1.5 - Updated notification logic to group updates
 v0.1.4 - Combined notifications for Windows builds and app protection policies
 v0.1.3 - Logo and output formatting updates
@@ -421,22 +422,31 @@ function Get-EndOfLifeDate {
     [cmdletbinding()]
     param (
         [Parameter(Mandatory = $true)]
-        [ValidateSet('iOS', 'Android')]
+        [ValidateSet('iOS', 'Android', 'Windows', 'macOS')]
         [string]$os
+
     )
 
-    if ($os -eq 'Android') {
-        $Resource = 'products/android'
-    }
-    elseif ($os -eq 'iOS') {
-        $Resource = 'products/ipados'
+    switch ($os) {
+        'Windows' { $Resource = 'products/windows' }
+        'macOS' { $Resource = 'products/macos' }
+        'Android' { $Resource = 'products/android' }
+        'iOS' { $Resource = 'products/ipados' }
     }
 
     try {
         $uri = "https://endoflife.date/api/v1/$($Resource)"
         $eolResults = Invoke-RestMethod -Uri $uri -Method Get
-        $results = $eolResults.result.releases | Where-Object { $_.isEol -eq $false } | ForEach-Object { $_.name } | Sort-Object -Descending
-        $results
+        $results = $eolResults.result.releases
+
+        if ($os -eq 'Windows') {
+            $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' -and $_.name -notlike '*26h1*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+        }
+        else {
+            $filteredResults = $results | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+        }
+
+        return $filteredResults
     }
     catch {
         Write-Error $_.Exception.Message
@@ -477,7 +487,7 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.5 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.6 Public Preview' -ForegroundColor Yellow -NoNewline
 Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-12' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
@@ -553,6 +563,7 @@ if ($null -ne $compliancePolicies) {
     Write-Host "`nFound $($windowsCompliancePolicies.Count) $os $policyType Policies with build ranges or Minimum versions." -ForegroundColor Magenta
 
     if ($null -ne $windowsCompliancePolicies) {
+        $windowsSupported = Get-EndOfLifeDate -os Windows
         $windowsVersions = @()
         $windowsBuilds = @()
 
@@ -567,9 +578,11 @@ if ($null -ne $compliancePolicies) {
         }
 
         $windowsVersions | Sort-Object -Unique | ForEach-Object {
+            $version = $_
             $windowsBuilds += [PSCustomObject]@{
-                version     = $_
-                latestBuild = Get-WindowsUpdateBuild -osVersion $_
+                version     = $version
+                latestBuild = Get-WindowsUpdateBuild -osVersion $version
+                isEol       = $windowsSupported | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -586,12 +599,23 @@ if ($null -ne $compliancePolicies) {
                 $minVersion = $compliancePolicy.osMinimumVersion
                 $osVersion = $minVersion.Split('.')[2]
                 $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+                $buildEol = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
+                if ($buildEol -eq $true) {
+                    Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+                }
 
                 if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                     $policyChange = $true
                     $compliancePolicy.osMinimumVersion = $latestBuild
                     Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
-                    $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+
+                    if ($buildEol -eq $true) {
+                        $updateItems += @{text = "Minimum operating system version (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    }
+                    else {
+                        $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    }
+
                 }
             }
 
@@ -600,11 +624,22 @@ if ($null -ne $compliancePolicies) {
                     $minVersion = $buildRange.lowestVersion
                     $osVersion = $minVersion.Split('.')[2]
                     $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+                    $buildEol = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
+                    if ($buildEol -eq $true) {
+                        Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+                    }
+
                     if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                         $policyChange = $true
                         $buildRange.lowestVersion = $latestBuild
                         Write-Host "$os $policyType policy will be updated for $($buildRange.description) from $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $updateItems += @{text = "Minimum operating system build version for $($buildRange.description) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+
+                        if ($buildEol -eq $true) {
+                            $updateItems += @{text = "Minimum operating system build version for $($buildRange.description) (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        }
+                        else {
+                            $updateItems += @{text = "Minimum operating system build version for $($buildRange.description) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        }
                     }
                 }
             }
@@ -671,6 +706,7 @@ if ($null -ne $compliancePolicies) {
     Write-Host "`nFound $($macOSCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Magenta
 
     if ($null -ne $macOSCompliancePolicies) {
+        $macOSSupported = Get-EndOfLifeDate -os macOS
         $macOSVersions = @()
         $macOSBuilds = @()
 
@@ -679,9 +715,11 @@ if ($null -ne $compliancePolicies) {
         }
 
         $macOSVersions | Sort-Object -Unique | ForEach-Object {
+            $version = $_
             $macOSBuilds += [PSCustomObject]@{
-                version     = $_
-                latestBuild = Get-AppleUpdateBuild -OS 'macOS' -osVersion $_
+                version     = $version
+                latestBuild = Get-AppleUpdateBuild -OS 'macOS' -osVersion $version
+                isEol       = $macOSSupported | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -695,12 +733,21 @@ if ($null -ne $compliancePolicies) {
             $minVersion = $compliancePolicy.osMinimumVersion
             $osVersion = $minVersion.Split('.')[0]
             $latestBuild = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+            $buildEol = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
+            if ($buildEol -eq $true) {
+                Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+            }
 
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
                 Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
-                $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                if ($buildEol -eq $true) {
+                    $updateItems += @{text = "Minimum operating system version (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                }
+                else {
+                    $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                }
             }
 
             if ($policyChange -eq $true -and $report -eq $false) {
@@ -763,6 +810,7 @@ if ($null -ne $compliancePolicies) {
     Write-Host "`nFound $($iOSCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Magenta
 
     if ($null -ne $iOSCompliancePolicies) {
+        $iOSSupported = Get-EndOfLifeDate -os iOS
         $iOSVersions = @()
         $iOSBuilds = @()
 
@@ -771,9 +819,11 @@ if ($null -ne $compliancePolicies) {
         }
 
         $iOSVersions | Sort-Object -Unique | ForEach-Object {
+            $version = $_
             $iOSBuilds += [PSCustomObject]@{
-                version     = $_
-                latestBuild = Get-AppleUpdateBuild -OS 'iOS' -osVersion $_
+                version     = $version
+                latestBuild = Get-AppleUpdateBuild -OS 'iOS' -osVersion $version
+                isEol       = $iOSSupported | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -787,12 +837,21 @@ if ($null -ne $compliancePolicies) {
             $minVersion = $compliancePolicy.osMinimumVersion
             $osVersion = $minVersion.Split('.')[0]
             $latestBuild = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+            $buildEol = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
+            if ($buildEol -eq $true) {
+                Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+            }
 
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
                 Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
-                $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                if ($buildEol -eq $true) {
+                    $updateItems += @{text = "Minimum operating system version (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                }
+                else {
+                    $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                }
             }
 
             if ($policyChange -eq $true -and $report -eq $false) {
@@ -858,6 +917,7 @@ if ($null -ne $compliancePolicies) {
     Write-Host "`nFound $($androidCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Magenta
 
     if ($null -ne $androidCompliancePolicies) {
+        $androidSupported = Get-EndOfLifeDate -os Android
         $androidVersions = @()
         $androidBuilds = @()
         $androidPatch = Get-AndroidUpdateBuild
@@ -867,9 +927,11 @@ if ($null -ne $compliancePolicies) {
         }
 
         $androidVersions | Sort-Object -Unique | ForEach-Object {
+            $version = $_
             $androidBuilds += [PSCustomObject]@{
-                version     = $_
+                version     = $version
                 latestBuild = $androidPatch
+                isEol       = $androidSupported | Where-Object { $($_.name + '.0') -eq "$version" -or $_.name -eq "$version" } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -883,12 +945,22 @@ if ($null -ne $compliancePolicies) {
             $minOSVersion = $compliancePolicy.osMinimumVersion
             $minVersion = $compliancePolicy.minAndroidSecurityPatchLevel
             $latestBuild = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty latestBuild
+            $buildEol = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty isEol
+            if ($buildEol -eq $true) {
+                Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+            }
 
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.minAndroidSecurityPatchLevel = $latestBuild
                 Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
-                $updateItems += @{text = "Minimum security patch level for $minOSVersion updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+
+                if ($buildEol -eq $true) {
+                    $updateItems += @{text = "Minimum security patch level for $minOSVersion (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                }
+                else {
+                    $updateItems += @{text = "Minimum security patch level for $minOSVersion updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                }
             }
 
             if ($policyChange -eq $true -and $report -eq $false) {
@@ -959,8 +1031,12 @@ $windowsAppProtectionPolicies = Get-AppProtectionPolicy -os Windows | Where-Obje
 Write-Host "`nFound $($windowsAppProtectionPolicies.Count) $os App Protection Policies with minimum OS version requirements." -ForegroundColor Magenta
 
 if ($null -ne $windowsAppProtectionPolicies) {
-    foreach ($appProtectionPolicy in $windowsAppProtectionPolicies) {
+    $windowsSupported = Get-EndOfLifeDate -os Windows
+    $newWarning = "$($windowsSupported.LatestName[0]).0"
+    $newRequired = "$($windowsSupported.LatestName[1]).0"
+    $newWipe = "$($windowsSupported.LatestName[2]).0"
 
+    foreach ($appProtectionPolicy in $windowsAppProtectionPolicies) {
         $policyChange = $false
         $policyDisplayName = $appProtectionPolicy.displayName
         $updateItems = @()
@@ -970,16 +1046,6 @@ if ($null -ne $windowsAppProtectionPolicies) {
         $minRequired = $appProtectionPolicy.minimumRequiredOsVersion
         $minWarning = $appProtectionPolicy.minimumWarningOsVersion
         $minWipe = $appProtectionPolicy.minimumWipeOsVersion
-
-        if ($minWarning.count -ne 0) {
-            $newWarning = Get-WindowsUpdateBuild -osVersion $minWarning.split('.')[2]
-        }
-        if ($minRequired.count -ne 0) {
-            $newRequired = Get-WindowsUpdateBuild -osVersion $minRequired.split('.')[2]
-        }
-        if ($minWipe.count -ne 0) {
-            $newWipe = Get-WindowsUpdateBuild -osVersion $minWipe.split('.')[2]
-        }
 
         if ($null -ne $minWarning -and $minWarning -ne $newWarning) {
             $policyChange = $true
@@ -1065,22 +1131,9 @@ Write-Host "`nFound $($iOSAppProtectionPolicies.Count) $os $policyType Policies 
 
 if ($null -ne $iOSAppProtectionPolicies) {
     $iOSSupported = Get-EndOfLifeDate -os iOS
-
-    if ($iOSSupported.Count -eq 1) {
-        $newWarning = "$($iOSSupported).0.0"
-        $newRequired = "$($iOSSupported - 8).0.0"
-        $newWipe = "$($newRequired - 1).0.0"
-    }
-    elseif ($iOSSupported.Count -eq 2) {
-        $newWarning = "$($iOSSupported[0]).0.0"
-        $newRequired = "$($iOSSupported[1]).0.0"
-        $newWipe = "$($iOSSupported[1] - 1).0.0"
-    }
-    else {
-        $newWarning = "$($iOSSupported[0]).0.0"
-        $newRequired = "$($iOSSupported[1]).0.0"
-        $newWipe = "$($iOSSupported[2]).0.0"
-    }
+    $newWarning = "$($iOSSupported.label[0]).0.0"
+    $newRequired = "$($iOSSupported.label[1]).0.0"
+    $newWipe = "$($iOSSupported.label[2]).0.0"
 
     foreach ($appProtectionPolicy in $iOSAppProtectionPolicies) {
         $policyChange = $false
@@ -1175,21 +1228,9 @@ Write-Host "`nFound $($androidAppProtectionPolicies.Count) $os $policyType Polic
 
 if ($null -ne $androidAppProtectionPolicies) {
     $androidSupported = Get-EndOfLifeDate -os Android
-    if ($androidSupported.count -eq 1) {
-        $newWarning = "$($androidSupported).0"
-        $newRequired = "$($($androidSupported) - 1).0"
-        $newWipe = "$($($androidSupported) - 2).0"
-    }
-    elseif ($androidSupported.count -eq 2) {
-        $newWarning = "$($androidSupported[0]).0"
-        $newRequired = "$($androidSupported[1]).0"
-        $newWipe = "$($($androidSupported[1]) - 1).0"
-    }
-    else {
-        $newWarning = "$($androidSupported[0]).0"
-        $newRequired = "$($androidSupported[1]).0"
-        $newWipe = "$($androidSupported[2]).0"
-    }
+    $newWarning = "$($androidSupported.name[0]).0"
+    $newRequired = "$($androidSupported.name[1]).0"
+    $newWipe = "$($androidSupported.name[2]).0"
 
     foreach ($appProtectionPolicy in $androidAppProtectionPolicies) {
         $policyChange = $false
