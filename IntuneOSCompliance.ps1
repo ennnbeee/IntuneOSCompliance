@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 0.1.6
+.VERSION 0.1.7
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -13,6 +13,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.1.7 - Added support for n-1 on versions for App Protection policies
 v0.1.6 - Added notification for operating systems no longer supported
 v0.1.5 - Updated notification logic to group updates
 v0.1.4 - Combined notifications for Windows builds and app protection policies
@@ -30,12 +31,18 @@ Updates Microsoft Intune device compliance and app protection policies to ensure
 .DESCRIPTION
 Uses available APIs to check the latest available OS builds for supported platforms and compares these to the minimum OS build versions configured in Intune device compliance and app protection policies. If any policies are found to be out of date, they can be automatically updated with the latest build numbers.
 
+.PARAMETER report
+Set to $true to only report out of date policies in the console output without making any changes. Default is $true.
+
 .PARAMETER teamsWebHook
 Provide the Microsoft Teams webhook URL to send notifications to. If not provided, notifications will not be sent.
 https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook
 
-.PARAMETER report
-Set to $true to only report out of date policies in the console output without making any changes. Default is $true.
+.PARAMETER complianceOffset
+Specify whether Compliance policies require the latest version of the operating system or a version behind the latest (e.g. n-1). Default is 0 (latest version).
+
+.PARAMETER mamOffset
+Specify whether App Protection policies require the latest version of the operating system or a version behind the latest (e.g. n-1). Default is 0 (latest version).
 
 .PARAMETER tenantId
 Provide the Id of the Entra ID tenant to connect to.
@@ -64,11 +71,19 @@ App Authentication with policy changes and Microsoft Teams notifications enabled
 
 param(
 
+    [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
+    [bool]$report = $true,
+
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
     [String]$teamsWebHook,
 
-    [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
-    [bool]$report = $true,
+    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether Compliance policies require the latest version of the operating system or a version behind the latest (e.g. n-1)')]
+    [ValidateRange(0, 2)]
+    [int]$complianceOffset = 0,
+
+    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether App Protection policies require the latest version of the operating system or a version behind the latest (e.g. n-1)')]
+    [ValidateRange(0, 2)]
+    [int]$mamOffset = 0,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Id of the Entra ID tenant to connect to')]
     [ValidateLength(36, 36)]
@@ -326,7 +341,7 @@ function Get-WindowsUpdateBuild() {
     )
     try {
 
-        if ($osVersion -like '19*') {
+        if ($osVersion -like '1*') {
             $uri = 'https://support.microsoft.com/en-us/feed/atom/6ae59d69-36fc-8e4d-23dd-631d98bf74a9'
         }
         else {
@@ -337,13 +352,16 @@ function Get-WindowsUpdateBuild() {
 
         $buildVersions = @()
         foreach ($osUpdate in $osUpdates.feed.entry) {
-            if ($osUpdate.title.'#text' -like "*$osVersion*" -and $osUpdate.title.'#text' -notlike '*Preview*' -and $update.title.'#text' -notlike '*Out-of-band*') {
-                $buildVersions += $osUpdate.title.'#text'
+            if ($osUpdate.title.'#text' -like "*$osVersion*" -and $osUpdate.title.'#text' -notlike '*Preview*' -and $osUpdate.title.'#text' -notlike '*Out-of-band*') {
+                $buildVersions += $($osUpdate.title.'#text')
             }
         }
-        $buildVersion = $buildVersions[0].Substring($BuildVersions[0].LastIndexOf('.')) -replace '[^0-9]'
-        $osBuildVersion = '10.0.' + $osVersion + '.' + $buildVersion
-        return $osBuildVersion
+        $osBuildVersions = @()
+        foreach ($build in $buildVersions) {
+            $buildVersion = $build.Substring($build.LastIndexOf('.')) -replace '[^0-9]'
+            $osBuildVersions += '10.0.' + $osVersion + '.' + $buildVersion
+        }
+        return $osBuildVersions
     }
     catch {
         Write-Error $_.Exception.Message
@@ -370,12 +388,11 @@ function Get-AppleUpdateBuild() {
         $buildVersions = @()
         foreach ($update in $Updates.rss.channel.Item) {
             if (($update.title -like "*$OS*" -and $update.title -like "*$osVersion*") -and ($update.title -notlike '*beta*' -and $update.title -notlike '*RC*')) {
-                $buildVersions += $Update.title
+                $buildVersions += ($Update.title -split ' ')[-1]
             }
         }
-        $osBuildVersion = ($buildVersions[0] -split ' ')[-1]
 
-        return $osBuildVersion
+        return $buildVersions
     }
     catch {
         Write-Error $_.Exception.Message
@@ -392,25 +409,21 @@ function Get-AndroidUpdateBuild() {
         if (-not $tableMatch.Success) { throw "Could not find the table containing 'Security patch level'." }
         $tableHtml = $tableMatch.Value
 
-        $rowMatch = [regex]::Match($tableHtml, '(?is)<tr[^>]*>\s*<td[^>]*>.*?</tr>')
-        if (-not $rowMatch.Success) { throw 'Could not find the first data row in the security bulletin table.' }
-        $firstDataRow = $rowMatch.Value
+        $rowMatches = [regex]::Matches($tableHtml, '(?is)<tr[^>]*>\s*<td[^>]*>.*?</tr>')
+        if ($rowMatches.Count -eq 0) { throw 'Could not find any data rows in the security bulletin table.' }
 
-        $cells = [regex]::Matches($firstDataRow, '(?is)<td[^>]*>(?<cell>.*?)</td>') | ForEach-Object { $_.Groups['cell'].Value }
-        if ($cells.Count -lt 4) { throw 'First data row did not contain at least 4 columns.' }
-        $patchCellHtml = $cells[3]
+        $patchLevels = @()
+        foreach ($row in $rowMatches) {
+            $cells = [regex]::Matches($row.Value, '(?is)<td[^>]*>(?<cell>.*?)</td>') | ForEach-Object { $_.Groups['cell'].Value }
+            if ($cells.Count -lt 4) { continue }
+            $dates = [regex]::Matches($cells[3], '\b\d{4}-\d{2}-\d{2}\b') | ForEach-Object { $_.Value }
+            if ($dates.Count -lt 1) { continue }
+            $patchLevels += ([datetime]$dates[0]).ToString('yyyy-MM-dd')
+        }
 
-        $dates = [regex]::Matches($patchCellHtml, '\b\d{4}-\d{2}-\d{2}\b') | ForEach-Object { $_.Value }
-        if ($dates.Count -lt 2) { throw 'Could not find two patch level dates inside the Security patch level cell.' }
+        if ($patchLevels.Count -eq 0) { throw 'Could not find any patch level dates in the security bulletin table.' }
 
-        $patchLevel1 = ([datetime]$dates[0]).ToString('yyyy-MM-dd')
-        #$patchLevel2 = ([datetime]$dates[1]).ToString('dd-MM-yyyy')
-
-        # Optional guard rails, warnings only
-        if ($dates[0] -notmatch '-01$') { Write-Warning "PatchLevel1 does not end with '-01' ($($dates[0]))" }
-        if ($dates[1] -notmatch '-05$') { Write-Warning "PatchLevel2 does not end with '-05' ($($dates[1]))" }
-
-        return $patchLevel1
+        return $patchLevels
     }
     catch {
         Write-Error $_.Exception.Message
@@ -487,8 +500,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.6 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-12' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.7 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-14' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -581,7 +594,7 @@ if ($null -ne $compliancePolicies) {
             $version = $_
             $windowsBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = Get-WindowsUpdateBuild -osVersion $version
+                latestBuild = $(Get-WindowsUpdateBuild -osVersion $version)[$complianceOffset]
                 isEol       = $windowsSupported | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol
             }
         }
@@ -718,7 +731,7 @@ if ($null -ne $compliancePolicies) {
             $version = $_
             $macOSBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = Get-AppleUpdateBuild -OS 'macOS' -osVersion $version
+                latestBuild = (Get-AppleUpdateBuild -OS 'macOS' -osVersion $version)[$complianceOffset]
                 isEol       = $macOSSupported | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
             }
         }
@@ -822,7 +835,7 @@ if ($null -ne $compliancePolicies) {
             $version = $_
             $iOSBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = Get-AppleUpdateBuild -OS 'iOS' -osVersion $version
+                latestBuild = (Get-AppleUpdateBuild -OS 'iOS' -osVersion $version)[$complianceOffset]
                 isEol       = $iOSSupported | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
             }
         }
@@ -930,7 +943,7 @@ if ($null -ne $compliancePolicies) {
             $version = $_
             $androidBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = $androidPatch
+                latestBuild = $androidPatch[$complianceOffset]
                 isEol       = $androidSupported | Where-Object { $($_.name + '.0') -eq "$version" -or $_.name -eq "$version" } | Select-Object -ExpandProperty isEol
             }
         }
@@ -1032,9 +1045,9 @@ Write-Host "`nFound $($windowsAppProtectionPolicies.Count) $os App Protection Po
 
 if ($null -ne $windowsAppProtectionPolicies) {
     $windowsSupported = Get-EndOfLifeDate -os Windows
-    $newWarning = "$($windowsSupported.LatestName[0]).0"
-    $newRequired = "$($windowsSupported.LatestName[1]).0"
-    $newWipe = "$($windowsSupported.LatestName[2]).0"
+    $newWarning = "$($windowsSupported.LatestName[$mamOffset]).0"
+    $newRequired = "$($windowsSupported.LatestName[$mamOffset + 1]).0"
+    $newWipe = "$($windowsSupported.LatestName[$mamOffset + 2]).0"
 
     foreach ($appProtectionPolicy in $windowsAppProtectionPolicies) {
         $policyChange = $false
@@ -1131,9 +1144,9 @@ Write-Host "`nFound $($iOSAppProtectionPolicies.Count) $os $policyType Policies 
 
 if ($null -ne $iOSAppProtectionPolicies) {
     $iOSSupported = Get-EndOfLifeDate -os iOS
-    $newWarning = "$($iOSSupported.label[0]).0.0"
-    $newRequired = "$($iOSSupported.label[1]).0.0"
-    $newWipe = "$($iOSSupported.label[2]).0.0"
+    $newWarning = "$($iOSSupported.label[$mamOffset]).0.0"
+    $newRequired = "$($iOSSupported.label[$mamOffset + 1]).0.0"
+    $newWipe = "$($iOSSupported.label[$mamOffset + 2]).0.0"
 
     foreach ($appProtectionPolicy in $iOSAppProtectionPolicies) {
         $policyChange = $false
@@ -1228,9 +1241,9 @@ Write-Host "`nFound $($androidAppProtectionPolicies.Count) $os $policyType Polic
 
 if ($null -ne $androidAppProtectionPolicies) {
     $androidSupported = Get-EndOfLifeDate -os Android
-    $newWarning = "$($androidSupported.name[0]).0"
-    $newRequired = "$($androidSupported.name[1]).0"
-    $newWipe = "$($androidSupported.name[2]).0"
+    $newWarning = "$($androidSupported.name[$mamOffset]).0"
+    $newRequired = "$($androidSupported.name[$mamOffset + 1]).0"
+    $newWipe = "$($androidSupported.name[$mamOffset + 2]).0"
 
     foreach ($appProtectionPolicy in $androidAppProtectionPolicies) {
         $policyChange = $false

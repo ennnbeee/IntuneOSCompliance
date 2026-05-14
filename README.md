@@ -32,6 +32,8 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
+- **v0.1.7**
+  - Allows for offset of Compliance and App protection policies operating system versions
 - **v0.1.5**
   - Updated Microsoft Teams card notification method
 - v0.1.4
