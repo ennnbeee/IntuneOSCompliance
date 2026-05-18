@@ -485,7 +485,6 @@ $rndWait = Get-Random -Minimum 1 -Maximum 2
 #endregion
 
 #region intro
-Clear-Host
 Write-Host '
 ░▀█▀░█▀█░▀█▀░█░█░█▀█░█▀▀
 ░░█░░█░█░░█░░█░█░█░█░█▀▀
