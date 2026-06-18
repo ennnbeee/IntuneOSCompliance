@@ -16,6 +16,8 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 ## 🌟 Features
 
 - Uses APIs and RSS feed to capture the latest supported build versions for Windows, Android, and Apple devices.
+- Allows you to offset your Compliance policy minimum operating system build version requirements by either n-1 or n-2.
+- Allows you to offset your App Protection policy minimum operating system requirements by either n-1 or n-2.
 - Detects all Compliance policies that support minimum operating system versions or minimum operating system build versions (Windows).
 - Detects all App Protection policies that support minimum operating system versions for Warning, Block, and Wipe Conditional launch actions.
 - For Compliance policies where the minimum operating systems are not current, updates the policy to the latest build version i.e. **26.0.1** to **26.3.1** or **10.0.26200.2356** to **10.0.26200.8246**
@@ -32,7 +34,7 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
-- **v0.1.7**
+- **v0.1.8**
   - Allows for offset of Compliance and App protection policies operating system versions
 - **v0.1.5**
   - Updated Microsoft Teams card notification method
@@ -63,6 +65,16 @@ Running the PowerShell script in report only mode will disable sending a Microso
 ```
 
 > Report mode is on by default.
+
+### Operating System Offset
+
+To configure an operating system offset to allow compliance policies or app protection policies to support either 1 or 2 versions behind, you can configure the below parameters.
+
+```PowerShell
+.\IntuneOSCompliance.ps1 -report $false -complianceOffset 1 -mamOffset 2
+```
+
+> Both `complianceOffset` and  `mamOffset` are set to 0 by default.
 
 ### Authentication
 

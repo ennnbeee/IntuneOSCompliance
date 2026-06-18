@@ -1,3 +1,4 @@
+#Requires -Version 7
 <#PSScriptInfo
 
 .VERSION 0.1.8
