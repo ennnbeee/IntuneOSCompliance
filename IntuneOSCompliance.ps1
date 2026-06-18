@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.1.8
+.VERSION 0.1.9
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.1.9 - Updated to Windows build function as Microsoft changed the format of their update feed
 v0.1.8 - Minor formatting updates
 v0.1.7 - Added support for n-1 on versions for App Protection policies
 v0.1.6 - Added notification for operating systems no longer supported
@@ -343,7 +344,7 @@ function Get-WindowsUpdateBuild() {
     )
     try {
 
-        if ($osVersion -like '1*') {
+        if ($osVersion -like '19*') {
             $uri = 'https://support.microsoft.com/en-us/feed/atom/6ae59d69-36fc-8e4d-23dd-631d98bf74a9'
         }
         else {
@@ -363,7 +364,9 @@ function Get-WindowsUpdateBuild() {
             $buildVersion = $build.Substring($build.LastIndexOf('.')) -replace '[^0-9]'
             $osBuildVersions += '10.0.' + $osVersion + '.' + $buildVersion
         }
-        return $osBuildVersions
+
+        $osBuildVersionsOrdered = $osBuildVersions | Select-Object -Unique | Sort-Object -Descending
+        return $osBuildVersionsOrdered
     }
     catch {
         Write-Error $_.Exception.Message
@@ -501,8 +504,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.8 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-05-15' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.9 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-06-18' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -706,7 +709,7 @@ if ($null -ne $compliancePolicies) {
             elseif ($policyChange -eq $true -and $report -eq $true) {
                 Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
             }
-            else {
+            elseif ($policyChange -eq $false -and $report -eq $true) {
                 Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
             }
         }
@@ -810,7 +813,7 @@ if ($null -ne $compliancePolicies) {
             elseif ($policyChange -eq $true -and $report -eq $true) {
                 Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
             }
-            else {
+            elseif ($policyChange -eq $false -and $report -eq $true) {
                 Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
             }
         }
@@ -917,7 +920,7 @@ if ($null -ne $compliancePolicies) {
             elseif ($policyChange -eq $true -and $report -eq $true) {
                 Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
             }
-            else {
+            elseif ($policyChange -eq $false -and $report -eq $true) {
                 Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
             }
         }
@@ -1025,7 +1028,7 @@ if ($null -ne $compliancePolicies) {
             elseif ($policyChange -eq $true -and $report -eq $true) {
                 Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
             }
-            else {
+            elseif ($policyChange -eq $false -and $report -eq $true) {
                 Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
             }
         }
@@ -1130,7 +1133,7 @@ if ($null -ne $windowsAppProtectionPolicies) {
         elseif ($policyChange -eq $true -and $report -eq $true) {
             Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
         }
-        else {
+        elseif ($policyChange -eq $false -and $report -eq $true) {
             Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
         }
     }
@@ -1227,7 +1230,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
         elseif ($policyChange -eq $true -and $report -eq $true) {
             Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
         }
-        else {
+        elseif ($policyChange -eq $false -and $report -eq $true) {
             Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
         }
     }
@@ -1326,7 +1329,7 @@ if ($null -ne $androidAppProtectionPolicies) {
         elseif ($policyChange -eq $true -and $report -eq $true) {
             Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
         }
-        else {
+        elseif ($policyChange -eq $false -and $report -eq $true) {
             Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
         }
     }
