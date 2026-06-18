@@ -15,14 +15,15 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🌟 Features
 
-- Uses APIs and RSS feed to capture the latest supported build versions for Windows, Android, and Apple devices.
-- Allows you to offset your Compliance policy minimum operating system build version requirements by either n-1 or n-2.
-- Allows you to offset your App Protection policy minimum operating system requirements by either n-1 or n-2.
+- Uses APIs and RSS feeds to capture the latest supported build versions for Windows, Android, and Apple devices.
 - Detects all Compliance policies that support minimum operating system versions or minimum operating system build versions (Windows).
 - Detects all App Protection policies that support minimum operating system versions for Warning, Block, and Wipe Conditional launch actions.
 - For Compliance policies where the minimum operating systems are not current, updates the policy to the latest build version i.e. **26.0.1** to **26.3.1** or **10.0.26200.2356** to **10.0.26200.8246**
 - For App Protection policies where the minimum operating systems are not current, updates the policy to the latest version i.e. **17.0.0** to **26.0.0** or **13.0** to **16.0.0**
-- For App Protection policies with warning, block, and wipe actions will set the minimum operating system as n-1 or n-1 behind the latest supported operating system version i.e. 16.0, 15.0, 14.0 or 26.0.0, 18.0.0, 17.0.0
+- For App Protection policies with warning, block, and wipe actions will set the minimum operating system as n-1/n-2 behind the latest supported operating system version i.e. 16.0, 15.0, 14.0 or 26.0.0, 18.0.0, 17.0.0
+- Allows you to offset your Compliance policy minimum operating system build version requirements by either n-1 or n-2.
+- Allows you to offset your App Protection policy minimum operating system requirements by either n-1 or n-2.
+- Warns you if a compliance policy contains unsupported operating systems.
 
 ## 🗒 Prerequisites
 
