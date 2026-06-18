@@ -1,0 +1,60 @@
+name: Intune OS Compliance Update
+
+trigger: none
+
+schedules:
+  - cron: "0 9 * * 3" # Every Wednesday at 09:00 UTC
+    displayName: Weekly Wednesday Run
+    branches:
+      include:
+        - main
+    always: true
+
+pool:
+  vmImage: windows-latest
+
+jobs:
+  - job: update_compliance
+    displayName: Update Compliance
+
+    steps:
+      - task: PowerShell@2
+        displayName: Download IntuneOSCompliance script
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: |
+            Invoke-WebRequest `
+              -Uri 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/main/IntuneOSCompliance.ps1' `
+              -OutFile 'IntuneOSCompliance.ps1'
+
+      - task: PowerShell@2
+        displayName: Install Microsoft.Graph.Authentication module
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: |
+            Install-Module -Name Microsoft.Graph.Authentication `
+              -Scope CurrentUser `
+              -AllowClobber `
+              -Force
+
+      - task: PowerShell@2
+        displayName: Run IntuneOSCompliance
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: |
+            .\IntuneOSCompliance.ps1 `
+              -tenantId    $env:TENANT_ID `
+              -appId       $env:APP_ID `
+              -appSecret   $env:APP_SECRET `
+              -teamsWebHook $env:TEAMS_WEBHOOK `
+              -report      $false `
+              -complianceOffset 0 `
+              -mamOffset 0
+        env:
+          TENANT_ID: $(TENANT_ID)
+          APP_ID: $(APP_ID)
+          APP_SECRET: $(APP_SECRET)
+          TEAMS_WEBHOOK: $(TEAMS_WEBHOOK)

@@ -46,7 +46,7 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## ⏯ Usage
 
-Running the script without selecting any additional parameters will run the PowerShell script in report only mode, where it will check your existing Compliance and App Protection policies
+Running the script without selecting any additional parameters will run the PowerShell script in report only mode, where it will check your existing Compliance and App Protection policies.
 
 ### Teams Web Hooks
 
@@ -106,6 +106,32 @@ Then run the script with the corresponding Microsoft Entra ID tenant ID, AppId a
 ```powershell
 .\IntuneOSCompliance.ps1 -tenantID '437e8ffb-3030-469a-99da-e5b527908099' -appId '799ebcfa-ca81-4e63-baaf-a35123164d78' -appSecret 'g708Q~uot4xo9dU_1TjGQIuUr0UyBHNZmY2m3cy6'
 ```
+
+## Automation
+
+To allow for the PowerShell script to be run on a schedule, you can use GitHub actions or Azure DevOps pipelines to download and run the script with configured parameters.
+
+### GitHub Actions
+
+Use the `GHA-IntuneOSCompliance.yml` in the automation directory as a reference to create a new [GitHub Action](https://github.com/features/actions). You will need to update the script parameters for `complianceOffset` and `mamOffset`.
+
+Create [GitHub repository secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) for the following after creating a new Microsoft Entra ID app registration:
+
+- `TENANT_ID` - Microsoft Entra ID tenant Id
+- `APP_ID` - App registration client Id
+- `APP_SECRET` - A registration client secret
+- `TEAMS_WEBHOOK` - Teams Webhook URI
+
+### Azure DevOps
+
+Use the `ADO-IntuneOSCompliance.yml` in the automation directory as a reference to create a new [Azure DevOps pipeline](https://azure.microsoft.com/en-us/products/devops/pipelines). You will need to update the script parameters for `complianceOffset` and `mamOffset`.
+
+Create [pipeline variables](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/variables?view=azure-devops&tabs=yaml%2Cbatch) for the following after creating a new Microsoft Entra ID app registration:
+
+- `TENANT_ID` - Microsoft Entra ID tenant Id
+- `APP_ID` - App registration client Id
+- `APP_SECRET` - A registration client secret
+- `TEAMS_WEBHOOK` - Teams Webhook URI
 
 ## 🎬 Demos
 
