@@ -35,15 +35,18 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
-- **v0.1.9**
-  - Allows for offset of Compliance and App protection policies operating system versions
-- **v0.1.5**
-  - Updated Microsoft Teams card notification method
+- **v0.2.0**
+  - If a Teams Webhook is provided, report mode will send a notification of policies that need updating.
+  - Identifies and notifies of end-of-life operating systems.
+- v0.1.9
+  - Allows for offset of Compliance and App protection policies operating system versions.
+- v0.1.5
+  - Updated Microsoft Teams card notification method.
 - v0.1.4
-  - Support for Windows MAM
-  - Support for report only mode
+  - Support for Windows MAM.
+  - Support for report only mode.
 - v0.1.0
-  - Initial release
+  - Initial release.
 
 ## ⏯ Usage
 
@@ -59,7 +62,7 @@ To allow the PowerShell script to send details of any changes made to a Complian
 
 ### Report Mode
 
-Running the PowerShell script in report only mode will disable sending a Microsoft Teams Webhook and disable updating any Compliance or App Protection policy.
+Running the PowerShell script in report only mode will send a Microsoft Teams Webhook notification but disable updating any Compliance or App Protection policy.
 
 ```PowerShell
 .\IntuneOSCompliance.ps1 -report $true
