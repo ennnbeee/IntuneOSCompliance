@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.1.9
+.VERSION 0.2.0
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.2.0 - Teams notification in report mode and highlighting of end-of-life operating system versions in policies
 v0.1.9 - Updated to Windows build function as Microsoft changed the format of their update feed
 v0.1.8 - Minor formatting updates
 v0.1.7 - Added support for n-1 on versions for App Protection policies
@@ -22,7 +23,7 @@ v0.1.5 - Updated notification logic to group updates
 v0.1.4 - Combined notifications for Windows builds and app protection policies
 v0.1.3 - Logo and output formatting updates
 v0.1.2 - Updated logo source and formatting
-v0.1.1 - Added support for Windows App Protection Policies and Windows 10
+v0.1.1 - Added support for Windows App Protection policies and Windows 10
 v0.1.0 - Initial release.
 
 .PRIVATEDATA
@@ -61,6 +62,15 @@ Interactive Authentication with no policy changes or notifications, just reporti
 .\IntuneOSCompliance.ps1 -report $false
 
 .EXAMPLE
+Interactive Authentication with no policy changes reporting out of date policies in the console output and through the Teams webhook.
+.\IntuneOSCompliance.ps1 -teamsWebHook 'https://customwebhookurl'
+
+.EXAMPLE
+Interactive Authentication with no policy changes or notifications, just reporting out of date policies in the console output.
+Compliance policies wil be updated to two updates behind the latest version and App Protection policies will be updated to one update behind the latest version.
+.\IntuneOSCompliance.ps1 -report $false -complianceOffset 2 -mamOffset 1
+
+.EXAMPLE
 Pass through Authentication with policy changes and Microsoft Teams notifications enabled.
 .\IntuneOSCompliance.ps1 -tenantId '437e8ffb-3030-469a-99da-e5b527908099' -report $false -teamsWebHook 'https://customwebhookurl'
 
@@ -80,11 +90,11 @@ param(
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
     [String]$teamsWebHook,
 
-    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether Compliance policies require the latest version of the operating system or a version behind the latest (e.g. n-1)')]
+    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether Compliance policies require the latest version of the operating system or a minor version behind the latest (e.g. n-1)')]
     [ValidateRange(0, 2)]
     [int]$complianceOffset = 0,
 
-    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether App Protection policies require the latest version of the operating system or a version behind the latest (e.g. n-1)')]
+    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether App Protection policies require the latest version of the operating system or a major version behind the latest (e.g. n-1)')]
     [ValidateRange(0, 2)]
     [int]$mamOffset = 0,
 
@@ -219,7 +229,7 @@ function Set-DeviceCompliancePolicy() {
 
     $graphApiVersion = 'Beta'
     $resource = "deviceManagement/deviceCompliancePolicies/$id"
-    if ($PSCmdlet.ShouldProcess('Compliance Policy', 'Update')) {
+    if ($PSCmdlet.ShouldProcess('Compliance policy', 'Update')) {
         try {
 
             Test-JSONData -Json $JSON
@@ -233,10 +243,10 @@ function Set-DeviceCompliancePolicy() {
         }
     }
     elseif ($WhatIfPreference.IsPresent) {
-        Write-Output "Compliance Policy $Id would have been updated"
+        Write-Output "Compliance policy $Id would have been updated"
     }
     else {
-        Write-Output "Compliance Policy $Id was not updated"
+        Write-Output "Compliance policy $Id was not updated"
     }
 
 }
@@ -313,7 +323,7 @@ function Set-AppProtectionPolicy() {
         $resource = "deviceAppManagement/windowsManagedAppProtections/$id"
     }
 
-    if ($PSCmdlet.ShouldProcess('App Protection Policy', 'Update')) {
+    if ($PSCmdlet.ShouldProcess('App Protection policy', 'Update')) {
         try {
 
             Test-JSONData -Json $JSON
@@ -327,10 +337,10 @@ function Set-AppProtectionPolicy() {
         }
     }
     elseif ($WhatIfPreference.IsPresent) {
-        Write-Output "App Protection Policy $Id would have been updated"
+        Write-Output "App Protection policy $Id would have been updated"
     }
     else {
-        Write-Output "App Protection Policy $Id was not updated"
+        Write-Output "App Protection policy $Id was not updated"
     }
 
 }
@@ -441,7 +451,11 @@ function Get-EndOfLifeDate {
     param (
         [Parameter(Mandatory = $true)]
         [ValidateSet('iOS', 'Android', 'Windows', 'macOS')]
-        [string]$os
+        [string]$os,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Business', 'Consumer')]
+        [string]$sku
 
     )
 
@@ -458,7 +472,13 @@ function Get-EndOfLifeDate {
         $results = $eolResults.result.releases
 
         if ($os -eq 'Windows') {
-            $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' -and $_.name -notlike '*26h1*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+            if ($sku -eq 'Consumer') {
+                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-e*' -and $_.name -notlike '*26h1*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+            }
+            else {
+                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' -and $_.name -notlike '*26h1*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+            }
+
         }
         else {
             $filteredResults = $results | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
@@ -486,6 +506,10 @@ $scopes = @('DeviceManagementApps.ReadWrite.All', 'DeviceManagementConfiguration
 $teamsItems = @()
 $dateTime = Get-Date -Format 'HH:mm:ss dd/MM/yyyy'
 $rndWait = Get-Random -Minimum 1 -Maximum 2
+$noticeText = switch ($report) {
+    $true { 'should be updated from' }
+    $false { 'updated from' }
+}
 #endregion
 
 #region intro
@@ -504,8 +528,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.1.9 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-06-18' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.2.0 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-06-23' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -577,7 +601,7 @@ if ($null -ne $compliancePolicies) {
     $os = 'Windows'
     $osImageUrl = $windowsCompliance
     $windowsCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.windows10CompliancePolicy' -and ($_.validOperatingSystemBuildRanges -ne $null -or $_.osMinimumVersion -ne $null) }
-    Write-Host "`nFound $($windowsCompliancePolicies.Count) $os $policyType Policies with build ranges or Minimum versions." -ForegroundColor Magenta
+    Write-Host "`n`nFound $($windowsCompliancePolicies.Count) $os $policyType policies with operating system build ranges or minimum versions." -ForegroundColor Magenta
 
     if ($null -ne $windowsCompliancePolicies) {
         $windowsSupported = Get-EndOfLifeDate -os Windows
@@ -612,56 +636,66 @@ if ($null -ne $compliancePolicies) {
             $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
 
+            # OS minimum version check
             if (![string]::IsNullOrEmpty($compliancePolicy.osMinimumVersion)) {
                 $minVersion = $compliancePolicy.osMinimumVersion
                 $osVersion = $minVersion.Split('.')[2]
                 $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
                 $buildEol = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
-                if ($buildEol -eq $true) {
-                    Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+                # end of life but up to date
+                if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -eq $minVersion) {
+                    Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) is end-of-life and should be removed from the policy" -ForegroundColor Red
+                    $updateItems += @{text = "$os $('10.0.' + $osVersion) is end-of-life and should be removed from the policy"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    $policyChange = $true
                 }
 
                 if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                     $policyChange = $true
                     $compliancePolicy.osMinimumVersion = $latestBuild
-                    Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
 
                     if ($buildEol -eq $true) {
-                        $updateItems += @{text = "Minimum operating system version (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) (end-of-life) will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                        $updateItems += @{text = "$os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                     }
                     else {
-                        $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                        $updateItems += @{text = "$os $('10.0.' + $osVersion) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                     }
-
                 }
             }
 
+            # Valid operating system build ranges check
             if (![string]::IsNullOrEmpty($compliancePolicy.validOperatingSystemBuildRanges)) {
+                $minVersion = $null
                 foreach ($buildRange in $compliancePolicy.validOperatingSystemBuildRanges) {
                     $minVersion = $buildRange.lowestVersion
                     $osVersion = $minVersion.Split('.')[2]
                     $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
                     $buildEol = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
-                    if ($buildEol -eq $true) {
-                        Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+                    # end of life but up to date
+                    if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -eq $minVersion) {
+                        Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) is end-of-life and should be removed from the policy" -ForegroundColor Red
+                        $updateItems += @{text = "$os $('10.0.' + $osVersion) is end-of-life and should be removed from the policy"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        $policyChange = $true
                     }
 
                     if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                         $policyChange = $true
                         $buildRange.lowestVersion = $latestBuild
-                        Write-Host "$os $policyType policy will be updated for $($buildRange.description) from $minVersion to $latestBuild" -ForegroundColor Yellow
 
                         if ($buildEol -eq $true) {
-                            $updateItems += @{text = "Minimum operating system build version for $($buildRange.description) (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                            Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) (end-of-life) will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                            $updateItems += @{text = "$os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                         }
                         else {
-                            $updateItems += @{text = "Minimum operating system build version for $($buildRange.description) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                            Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                            $updateItems += @{text = "$os $('10.0.' + $osVersion) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                         }
                     }
                 }
             }
 
-            if ($policyChange -eq $true -and $report -eq $false) {
+            if ($policyChange -eq $true) {
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -693,7 +727,9 @@ if ($null -ne $compliancePolicies) {
                     roundedCorners = $true
                     showBorder     = $true
                 }
+            }
 
+            if ($policyChange -eq $true -and $report -eq $false) {
                 Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
@@ -707,10 +743,10 @@ if ($null -ne $compliancePolicies) {
                 }
             }
             elseif ($policyChange -eq $true -and $report -eq $true) {
-                Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
+                Write-Host "$os $policyType policy needs updating" -ForegroundColor Red
             }
             elseif ($policyChange -eq $false -and $report -eq $true) {
-                Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
+                Write-Host "$os $policyType policy is up-to-date" -ForegroundColor Green
             }
         }
     }
@@ -720,7 +756,7 @@ if ($null -ne $compliancePolicies) {
     $os = 'macOS'
     $osImageUrl = $macOSCompliance
     $macOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.macOSCompliancePolicy' -and $_.osMinimumVersion -ne $null }
-    Write-Host "`nFound $($macOSCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Magenta
+    Write-Host "`n`nFound $($macOSCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
 
     if ($null -ne $macOSCompliancePolicies) {
         $macOSSupported = Get-EndOfLifeDate -os macOS
@@ -751,24 +787,27 @@ if ($null -ne $compliancePolicies) {
             $osVersion = $minVersion.Split('.')[0]
             $latestBuild = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
             $buildEol = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
-            if ($buildEol -eq $true) {
-                Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+            # end of life but up to date
+            if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -eq $minVersion) {
+                Write-Host "$os $policyType policy with $os $osVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+                $updateItems += @{text = "$os $osVersion is end-of-life and should be removed from the policy"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                $policyChange = $true
             }
 
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
-                Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
                 if ($buildEol -eq $true) {
-                    $updateItems += @{text = "Minimum operating system version (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    Write-Host "$os $policyType policy with $os $osVersion (end-of-life) will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                    $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                 }
                 else {
-                    $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    Write-Host "$os $policyType policy with $os $osVersion will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                    $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                 }
             }
 
-            if ($policyChange -eq $true -and $report -eq $false) {
-                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
+            if ($policyChange -eq $true) {
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -800,8 +839,13 @@ if ($null -ne $compliancePolicies) {
                     roundedCorners = $true
                     showBorder     = $true
                 }
+            }
+
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
+
                 try {
                     Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
                 }
@@ -811,20 +855,20 @@ if ($null -ne $compliancePolicies) {
                 }
             }
             elseif ($policyChange -eq $true -and $report -eq $true) {
-                Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
+                Write-Host "$os $policyType policy needs updating" -ForegroundColor Red
             }
             elseif ($policyChange -eq $false -and $report -eq $true) {
-                Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
+                Write-Host "$os $policyType policy is up-to-date" -ForegroundColor Green
             }
         }
     }
     #endregion
 
-    #region Apple mobile
-    $os = 'Apple mobile'
+    #region iOS/iPadOS
+    $os = 'iOS/iPadOS'
     $osImageUrl = $iOSCompliance
     $iOSCompliancePolicies = $compliancePolicies | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.iosCompliancePolicy' -and $_.osMinimumVersion -ne $null }
-    Write-Host "`nFound $($iOSCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Magenta
+    Write-Host "`n`nFound $($iOSCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
 
     if ($null -ne $iOSCompliancePolicies) {
         $iOSSupported = Get-EndOfLifeDate -os iOS
@@ -855,24 +899,26 @@ if ($null -ne $compliancePolicies) {
             $osVersion = $minVersion.Split('.')[0]
             $latestBuild = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
             $buildEol = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
-            if ($buildEol -eq $true) {
-                Write-Host "$os $policyType policy with version $minVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+            if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -eq $minVersion) {
+                Write-Host "$os $policyType policy with $os $osVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+                $updateItems += @{text = "$os $osVersion is end-of-life and should be removed from the policy"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                $policyChange = $true
             }
 
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.osMinimumVersion = $latestBuild
-                Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
                 if ($buildEol -eq $true) {
-                    $updateItems += @{text = "Minimum operating system version (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    Write-Host "$os $policyType policy with $os $osVersion (end-of-life) will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                    $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                 }
                 else {
-                    $updateItems += @{text = "Minimum operating system version updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    Write-Host "$os $policyType policy with $os $osVersion will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                    $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                 }
             }
 
-            if ($policyChange -eq $true -and $report -eq $false) {
-                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
+            if ($policyChange -eq $true) {
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -904,13 +950,15 @@ if ($null -ne $compliancePolicies) {
                     roundedCorners = $true
                     showBorder     = $true
                 }
+            }
 
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
 
                 try {
                     Set-DeviceCompliancePolicy -Id $compliancePolicy.id -JSON $jsonBody
-
                 }
                 catch {
                     Write-Error "Failed to update $os $policyType policy - $_.Exception.Message"
@@ -918,10 +966,10 @@ if ($null -ne $compliancePolicies) {
                 }
             }
             elseif ($policyChange -eq $true -and $report -eq $true) {
-                Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
+                Write-Host "$os $policyType policy needs updating" -ForegroundColor Red
             }
             elseif ($policyChange -eq $false -and $report -eq $true) {
-                Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
+                Write-Host "$os $policyType policy is up-to-date" -ForegroundColor Green
             }
         }
     }
@@ -931,7 +979,7 @@ if ($null -ne $compliancePolicies) {
     $os = 'Android'
     $osImageUrl = $androidCompliance
     $androidCompliancePolicies = $compliancePolicies | Where-Object { ($_.'@odata.type' -eq '#microsoft.graph.androidWorkProfileCompliancePolicy' -or $_.'@odata.type' -eq '#microsoft.graph.androidDeviceOwnerCompliancePolicy') -and $_.osMinimumVersion -ne $null }
-    Write-Host "`nFound $($androidCompliancePolicies.Count) $os $policyType Policies with Minimum OS Version." -ForegroundColor Magenta
+    Write-Host "`n`nFound $($androidCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
 
     if ($null -ne $androidCompliancePolicies) {
         $androidSupported = Get-EndOfLifeDate -os Android
@@ -959,29 +1007,32 @@ if ($null -ne $compliancePolicies) {
             $updateItems += @{isSubtle = $true ; size = 'Small'; text = "$policyType - $os"; wrap = $true ; type = 'TextBlock' }
             $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
-            $minOSVersion = $compliancePolicy.osMinimumVersion
+            $osVersion = $compliancePolicy.osMinimumVersion
             $minVersion = $compliancePolicy.minAndroidSecurityPatchLevel
             $latestBuild = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty latestBuild
             $buildEol = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty isEol
-            if ($buildEol -eq $true) {
-                Write-Host "$os $policyType policy with version $minOSVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+            if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -ne $minVersion) {
+                Write-Host "$os $policyType policy with $os $osVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
+                $updateItems += @{text = "$os $osVersion is end-of-life and should be removed from the policy"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                $policyChange = $true
             }
 
             if ($null -ne $latestBuild -and $latestBuild -ne $minVersion) {
                 $policyChange = $true
                 $compliancePolicy.minAndroidSecurityPatchLevel = $latestBuild
-                Write-Host "$os $policyType policy will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
 
                 if ($buildEol -eq $true) {
-                    $updateItems += @{text = "Minimum security patch level for $minOSVersion (end-of-life) updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    Write-Host "$os $policyType policy with $os $osVersion (end-of-life) will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                    $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+
                 }
                 else {
-                    $updateItems += @{text = "Minimum security patch level for $minOSVersion updated from $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                    Write-Host "$os $policyType policy with $os $osVersion will be updated from $minVersion to $latestBuild" -ForegroundColor Yellow
+                    $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                 }
             }
 
-            if ($policyChange -eq $true -and $report -eq $false) {
-                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
+            if ($policyChange -eq $true) {
                 $teamsItems += @{
                     items          = @(
                         @{
@@ -1013,7 +1064,10 @@ if ($null -ne $compliancePolicies) {
                     roundedCorners = $true
                     showBorder     = $true
                 }
+            }
 
+            if ($policyChange -eq $true -and $report -eq $false) {
+                Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
                 $jsonBody = $compliancePolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
                 Start-Sleep -Seconds $(Get-Random -Minimum 1 -Maximum 5)
 
@@ -1026,10 +1080,10 @@ if ($null -ne $compliancePolicies) {
                 }
             }
             elseif ($policyChange -eq $true -and $report -eq $true) {
-                Write-Host "$os $policyType policy does need updating" -ForegroundColor Red
+                Write-Host "$os $policyType policy needs updating" -ForegroundColor Red
             }
             elseif ($policyChange -eq $false -and $report -eq $true) {
-                Write-Host "$os $policyType policy does not need updating" -ForegroundColor Green
+                Write-Host "$os $policyType policy is up-to-date" -ForegroundColor Green
             }
         }
     }
@@ -1045,10 +1099,10 @@ $policyType = 'App Protection'
 $os = 'Windows'
 $osImageUrl = $windowsMAM
 $windowsAppProtectionPolicies = Get-AppProtectionPolicy -os Windows | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null -or $_.minimumWipeOsVersion -ne $null }
-Write-Host "`nFound $($windowsAppProtectionPolicies.Count) $os App Protection Policies with minimum OS version requirements." -ForegroundColor Magenta
+Write-Host "`n`nFound $($windowsAppProtectionPolicies.Count) $os App Protection policies with minimum OS version requirements." -ForegroundColor Magenta
 
 if ($null -ne $windowsAppProtectionPolicies) {
-    $windowsSupported = Get-EndOfLifeDate -os Windows
+    $windowsSupported = Get-EndOfLifeDate -os Windows -sku Consumer
     $newWarning = "$($windowsSupported.LatestName[$mamOffset]).0"
     $newRequired = "$($windowsSupported.LatestName[$mamOffset + 1]).0"
     $newWipe = "$($windowsSupported.LatestName[$mamOffset + 2]).0"
@@ -1059,7 +1113,7 @@ if ($null -ne $windowsAppProtectionPolicies) {
         $updateItems = @()
         $updateItems += @{isSubtle = $true ; size = 'Small'; text = "$policyType - $os"; wrap = $true ; type = 'TextBlock' }
         $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-        Write-Host "`nChecking $os $policyType Policy - $policyDisplayName" -ForegroundColor Cyan
+        Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
         $minRequired = $appProtectionPolicy.minimumRequiredOsVersion
         $minWarning = $appProtectionPolicy.minimumWarningOsVersion
         $minWipe = $appProtectionPolicy.minimumWipeOsVersion
@@ -1067,25 +1121,25 @@ if ($null -ne $windowsAppProtectionPolicies) {
         if ($null -ne $minWarning -and $minWarning -ne $newWarning) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS warning from $minWarning to $newWarning" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum warning OS version updated from $minWarning to $newWarning"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum warning OS version $noticeText $minWarning to $newWarning"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumWarningOsVersion = $newWarning
         }
 
         if ($null -ne $minRequired -and $minRequired -ne $newRequired) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS required from $minRequired to $newRequired" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum required OS version updated from $minRequired to $newRequired"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum required OS version $noticeText $minRequired to $newRequired"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumRequiredOsVersion = $newRequired
         }
 
         if ($null -ne $minWipe -and $minWipe -ne $newWipe) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS wipe from $minWipe to $newWipe" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum wipe OS version updated from $minWipe to $newWipe"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum wipe OS version $noticeText $minWipe to $newWipe"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumWipeOsVersion = $newWipe
         }
 
-        if ($policyChange -eq $true -and $report -eq $false) {
+        if ($policyChange -eq $true) {
             $teamsItems += @{
                 items          = @(
                     @{
@@ -1117,6 +1171,9 @@ if ($null -ne $windowsAppProtectionPolicies) {
                 roundedCorners = $true
                 showBorder     = $true
             }
+        }
+
+        if ($policyChange -eq $true -and $report -eq $false) {
 
             Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
             $jsonBody = $appProtectionPolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
@@ -1140,11 +1197,11 @@ if ($null -ne $windowsAppProtectionPolicies) {
 }
 #endregion
 
-#region Apple mobile
-$os = 'Apple mobile'
+#region iOS/iPadOS
+$os = 'iOS/iPadOS'
 $osImageUrl = $iOSMAM
 $iOSAppProtectionPolicies = Get-AppProtectionPolicy -os iOS | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
-Write-Host "`nFound $($iOSAppProtectionPolicies.Count) $os $policyType Policies with minimum OS version requirements." -ForegroundColor Magenta
+Write-Host "`n`nFound $($iOSAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
 
 if ($null -ne $iOSAppProtectionPolicies) {
     $iOSSupported = Get-EndOfLifeDate -os iOS
@@ -1158,7 +1215,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
         $updateItems = @()
         $updateItems += @{isSubtle = $true ; size = 'Small'; text = "$policyType - $os"; wrap = $true ; type = 'TextBlock' }
         $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-        Write-Host "`nChecking $os $policyType Policy - $policyDisplayName" -ForegroundColor Cyan
+        Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
         $minWarning = $appProtectionPolicy.minimumWarningOsVersion
         $minRequired = $appProtectionPolicy.minimumRequiredOsVersion
         $minWipe = $appProtectionPolicy.minimumWipeOsVersion
@@ -1166,23 +1223,23 @@ if ($null -ne $iOSAppProtectionPolicies) {
         if ($null -ne $minWarning -and $minWarning -ne $newWarning) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS warning from $minWarning to $newWarning" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum warning OS version updated from $minWarning to $newWarning"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum warning OS version $noticeText $minWarning to $newWarning"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumWarningOsVersion = $newWarning
         }
         if ($null -ne $minRequired -and $minRequired -ne $newRequired) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS required from $minRequired to $newRequired" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum required OS version updated from $minRequired to $newRequired"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum required OS version $noticeText $minRequired to $newRequired"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumRequiredOsVersion = $newRequired
         }
         if ($null -ne $minWipe -and $minWipe -ne $newWipe) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS wipe from $minWipe to $newWipe" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum wipe OS version updated from $minWipe to $newWipe"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum wipe OS version $noticeText $minWipe to $newWipe"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumWipeOsVersion = $newWipe
         }
 
-        if ($policyChange -eq $true -and $report -eq $false) {
+        if ($policyChange -eq $true) {
             $teamsItems += @{
                 items          = @(
                     @{
@@ -1214,6 +1271,9 @@ if ($null -ne $iOSAppProtectionPolicies) {
                 roundedCorners = $true
                 showBorder     = $true
             }
+        }
+
+        if ($policyChange -eq $true -and $report -eq $false) {
 
             Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
             $jsonBody = $appProtectionPolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
@@ -1241,7 +1301,7 @@ if ($null -ne $iOSAppProtectionPolicies) {
 $os = 'Android'
 $osImageUrl = $androidMAM
 $androidAppProtectionPolicies = Get-AppProtectionPolicy -os Android | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
-Write-Host "`nFound $($androidAppProtectionPolicies.Count) $os $policyType Policies with minimum OS version requirements." -ForegroundColor Magenta
+Write-Host "`n`nFound $($androidAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
 
 if ($null -ne $androidAppProtectionPolicies) {
     $androidSupported = Get-EndOfLifeDate -os Android
@@ -1255,7 +1315,7 @@ if ($null -ne $androidAppProtectionPolicies) {
         $updateItems = @()
         $updateItems += @{isSubtle = $true ; size = 'Small'; text = "$policyType - $os"; wrap = $true ; type = 'TextBlock' }
         $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-        Write-Host "`nChecking $os $policyType Policy - $policyDisplayName" -ForegroundColor Cyan
+        Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
         $minWarning = $appProtectionPolicy.minimumWarningOsVersion
         $minRequired = $appProtectionPolicy.minimumRequiredOsVersion
         $minWipe = $appProtectionPolicy.minimumWipeOsVersion
@@ -1263,25 +1323,25 @@ if ($null -ne $androidAppProtectionPolicies) {
         if ($null -ne $minWarning -and $minWarning -ne $newWarning) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS warning from $minWarning to $newWarning" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum warning OS version updated from $minWarning to $newWarning"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum warning OS version $noticeText $minWarning to $newWarning"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumWarningOsVersion = $newWarning
         }
 
         if ($null -ne $minRequired -and $minRequired -ne $newRequired) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS required from $minRequired to $newRequired" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum blocked OS version updated from $minRequired to $newRequired"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum required OS version $noticeText $minRequired to $newRequired"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumRequiredOsVersion = $newRequired
         }
 
         if ($null -ne $minWipe -and $minWipe -ne $newWipe) {
             $policyChange = $true
             Write-Host "$os $policyType policy will be updated for minOS wipe from $minWipe to $newWipe" -ForegroundColor Yellow
-            $updateItems += @{text = "Minimum wipe OS version updated from $minWipe to $newWipe"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            $updateItems += @{text = "Minimum wipe OS version $noticeText $minWipe to $newWipe"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             $appProtectionPolicy.minimumWipeOsVersion = $newWipe
         }
 
-        if ($policyChange -eq $true -and $report -eq $false) {
+        if ($policyChange -eq $true) {
             $teamsItems += @{
                 items          = @(
                     @{
@@ -1313,6 +1373,9 @@ if ($null -ne $androidAppProtectionPolicies) {
                 roundedCorners = $true
                 showBorder     = $true
             }
+        }
+
+        if ($policyChange -eq $true -and $report -eq $false) {
 
             Write-Host "Updating $os $policyType policy" -ForegroundColor Magenta
             $jsonBody = $appProtectionPolicy | Select-Object -Property * -ExcludeProperty createdDateTime, lastModifiedDateTime | ConvertTo-Json -Depth 10
@@ -1339,7 +1402,14 @@ if ($null -ne $androidAppProtectionPolicies) {
 #endregion
 
 #region teams notification
-if (![string]::IsNullOrEmpty($teamsWebHook) -and $report -eq $false -and $teamsItems.Count -ne 0) {
+if (![string]::IsNullOrEmpty($teamsWebHook) -and $teamsItems.Count -ne 0) {
+    if ($report -eq $false) {
+        $description = "The below policies have been automatically updated at $dateTime"
+    }
+    else {
+        $description = "The below policies need updating as of $dateTime"
+    }
+
     $teamsNotificationJSON = @{
         type      = 'AdaptiveCard'
         '$schema' = 'https://adaptivecards.io/schemas/adaptive-card.json'
@@ -1355,7 +1425,7 @@ if (![string]::IsNullOrEmpty($teamsWebHook) -and $report -eq $false -and $teamsI
             }
             @{
                 type        = 'TextBlock'
-                text        = "The below policies have been automatically updated at $dateTime"
+                text        = "$description"
                 targetWidth = 'atLeast:Narrow'
                 spacing     = 'Small'
                 wrap        = $true

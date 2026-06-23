@@ -4,7 +4,13 @@ The IntuneOSCompliance script is a PowerShell tool designed to automatically upd
 
 If configured the PowerShell script will also send a rich text Microsoft Teams card to an [Incoming Microsoft Teams Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook) with the results of the script run.
 
-![Screenshot of the data sent to the Microsoft Teams incoming webhook](img/teams-ss.png)
+## Compliance Updates
+
+![Screenshot of the data sent to the Microsoft Teams incoming webhook](img/teams-ss-compliance.jpg)
+
+## App Protection Updates
+
+![Screenshot of the data sent to the Microsoft Teams incoming webhook](img/teams-ss-mam.png)
 
 ## ⚠ Public Preview Notice
 
@@ -21,8 +27,8 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 - For Compliance policies where the minimum operating systems are not current, updates the policy to the latest build version i.e. **26.0.1** to **26.3.1** or **10.0.26200.2356** to **10.0.26200.8246**
 - For App Protection policies where the minimum operating systems are not current, updates the policy to the latest version i.e. **17.0.0** to **26.0.0** or **13.0** to **16.0.0**
 - For App Protection policies with warning, block, and wipe actions will set the minimum operating system as n-1/n-2 behind the latest supported operating system version i.e. 16.0, 15.0, 14.0 or 26.0.0, 18.0.0, 17.0.0
-- Allows you to offset your Compliance policy minimum operating system build version requirements by either n-1 or n-2.
-- Allows you to offset your App Protection policy minimum operating system requirements by either n-1 or n-2.
+- Allows you to offset your Compliance policy minimum operating system build version requirements by either n-1 or n-2 e.g. macOS 26.5.0 instead of 26.5.1
+- Allows you to offset your App Protection policy minimum operating system requirements by either n-1 or n-2 e.g. Android 16 instead of Android 17
 - Warns you if a compliance policy contains unsupported operating systems.
 
 ## 🗒 Prerequisites
@@ -31,19 +37,23 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 >
 > - Supports PowerShell 7 on Windows and macOS
 > - `Microsoft.Graph.Authentication` module should be installed, the script will detect and install if required.
-> - Entra ID App Registration with appropriate Graph Scopes or using Interactive Sign-In with a privileged account
+> - Microsoft Entra ID App Registration with appropriate Graph Scopes or using Interactive Sign-In with a privileged account
 
 ## 🔄 Updates
 
-- **v0.1.9**
-  - Allows for offset of Compliance and App protection policies operating system versions
-- **v0.1.5**
-  - Updated Microsoft Teams card notification method
+- **v0.2.0**
+  - If a Teams Webhook is provided, report mode will send a notification of policies that need updating.
+  - Identifies and notifies of end-of-life operating systems.
+  - Uses consumer Windows editions (Home, Pro) for Windows MAM supported operating system versions.
+- v0.1.9
+  - Allows for offset of Compliance and App protection policies operating system versions.
+- v0.1.5
+  - Updated Microsoft Teams card notification method.
 - v0.1.4
-  - Support for Windows MAM
-  - Support for report only mode
+  - Support for Windows MAM.
+  - Support for report only mode.
 - v0.1.0
-  - Initial release
+  - Initial release.
 
 ## ⏯ Usage
 
@@ -59,13 +69,21 @@ To allow the PowerShell script to send details of any changes made to a Complian
 
 ### Report Mode
 
-Running the PowerShell script in report only mode will disable sending a Microsoft Teams Webhook and disable updating any Compliance or App Protection policy.
+Running the PowerShell script in report only mode (on by default) will not update any Compliance or App Protection policy but output whether policies require updating in the console.
 
 ```PowerShell
-.\IntuneOSCompliance.ps1 -report $true
+.\IntuneOSCompliance.ps1
 ```
 
-> Report mode is on by default.
+### Report Mode and Teams Web Hook
+
+Running the PowerShell script in report only mode (on by default) will send a Microsoft Teams Webhook notification detailing any updates required but not update any Compliance or App Protection policy.
+
+```PowerShell
+.\IntuneOSCompliance.ps1 -teamsWebHook 'http://yourteamswebhookurl.environment.api.powerplatform.com'
+```
+
+![Screenshot of the data sent to the Microsoft Teams incoming webhook](img/teams-ss-report.png)
 
 ### Operating System Offset
 
@@ -76,6 +94,7 @@ To configure an operating system offset to allow compliance policies or app prot
 ```
 
 > Both `complianceOffset` and  `mamOffset` are set to 0 by default.
+> Compliance uses minor/build OS versions, app protection use major OS versions
 
 ### Authentication
 
@@ -102,7 +121,7 @@ Create an Entra ID App Registration with the following Graph API Application per
 
 Create an App Secret for the App Registration to be used when running the script.
 
-Then run the script with the corresponding Microsoft Entra ID tenant ID, AppId and AppSecret passed to the parameters
+Then run the script with the corresponding Microsoft Entra ID tenant ID, App Id and App Secret passed to the parameters
 
 ```powershell
 .\IntuneOSCompliance.ps1 -tenantID '437e8ffb-3030-469a-99da-e5b527908099' -appId '799ebcfa-ca81-4e63-baaf-a35123164d78' -appSecret 'g708Q~uot4xo9dU_1TjGQIuUr0UyBHNZmY2m3cy6'
