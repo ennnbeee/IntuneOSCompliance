@@ -155,7 +155,7 @@ Create [pipeline variables](https://learn.microsoft.com/en-us/azure/devops/pipel
 
 ## 🎬 Demos
 
-TBA
+![Screenshot of a run of IntuneOSCompliance in Azure Dev Ops](img/ado-ss-run.png)
 
 ## 🚑 Support
 
