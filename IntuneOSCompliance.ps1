@@ -604,13 +604,10 @@ function Get-EndOfLifeDate {
 #endregion
 
 #region variables
-$androidCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and-com.png'
-$androidMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and-mam.png'
-$iOSCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/ios-com.png'
-$iOSMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/ios-mam.png'
-$windowsCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win-com.png'
-$windowsMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win-mam.png'
-$macOSCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/mac-com.png'
+$androidLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and.png'
+$iOSLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/ios.png'
+$windowsLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win.png'
+$macOSLogo = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/mac.png'
 
 $scopes = @()
 if ($compliance -eq $true) {
@@ -719,7 +716,7 @@ if ($compliance -eq $true) {
 
     #region Windows
     $os = 'Windows'
-    $osImageUrl = $windowsCompliance
+    $osImageUrl = $windowsLogo
     $windowsCompliancePolicies = Get-DeviceCompliancePolicy -os Windows | Where-Object { ($_.validOperatingSystemBuildRanges -ne $null -or $_.osMinimumVersion -ne $null) }
     if ($null -ne $windowsCompliancePolicies) {
         Write-Host "`n`nFound $($windowsCompliancePolicies.Count) $os $policyType policies with operating system build ranges or minimum versions." -ForegroundColor Magenta
@@ -873,7 +870,7 @@ if ($compliance -eq $true) {
 
     #region macOS
     $os = 'macOS'
-    $osImageUrl = $macOSCompliance
+    $osImageUrl = $macOSLogo
     $macOSCompliancePolicies = Get-DeviceCompliancePolicy -os macOS | Where-Object { $_.osMinimumVersion -ne $null }
     if ($null -ne $macOSCompliancePolicies) {
         Write-Host "`n`nFound $($macOSCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
@@ -984,7 +981,7 @@ if ($compliance -eq $true) {
 
     #region iOS/iPadOS
     $os = 'iOS/iPadOS'
-    $osImageUrl = $iOSCompliance
+    $osImageUrl = $iOSLogo
     $iOSCompliancePolicies = Get-DeviceCompliancePolicy -os iOS | Where-Object { $_.osMinimumVersion -ne $null }
     if ($null -ne $iOSCompliancePolicies) {
         Write-Host "`n`nFound $($iOSCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
@@ -1094,7 +1091,7 @@ if ($compliance -eq $true) {
 
     #region Android
     $os = 'Android'
-    $osImageUrl = $androidCompliance
+    $osImageUrl = $androidLogo
     $androidCompliancePolicies = Get-DeviceCompliancePolicy -os Android | Where-Object { $_.osMinimumVersion -ne $null }
     if ($null -ne $androidCompliancePolicies) {
         Write-Host "`n`nFound $($androidCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
@@ -1213,7 +1210,7 @@ if ($appProtection -eq $true) {
 
     #region Windows
     $os = 'Windows'
-    $osImageUrl = $windowsMAM
+    $osImageUrl = $windowsLogo
     $windowsAppProtectionPolicies = Get-AppProtectionPolicy -os Windows | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null -or $_.minimumWipeOsVersion -ne $null }
     if ($null -ne $windowsAppProtectionPolicies) {
         Write-Host "`n`nFound $($windowsAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
@@ -1314,7 +1311,7 @@ if ($appProtection -eq $true) {
 
     #region iOS/iPadOS
     $os = 'iOS/iPadOS'
-    $osImageUrl = $iOSMAM
+    $osImageUrl = $iOSLogo
     $iOSAppProtectionPolicies = Get-AppProtectionPolicy -os iOS | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
     if ($null -ne $iOSAppProtectionPolicies) {
         Write-Host "`n`nFound $($iOSAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
@@ -1413,7 +1410,7 @@ if ($appProtection -eq $true) {
 
     #region Android
     $os = 'Android'
-    $osImageUrl = $androidMAM
+    $osImageUrl = $androidLogo
     $androidAppProtectionPolicies = Get-AppProtectionPolicy -os Android | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
     if ($null -ne $androidAppProtectionPolicies) {
         Write-Host "`n`nFound $($androidAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
@@ -1520,7 +1517,7 @@ if ($platformRestrictions -eq $true) {
 
     #region Windows
     $os = 'Windows'
-    $osImageUrl = $windowsMAM
+    $osImageUrl = $windowsLogo
     $windowsPlatformRestrictions = Get-EnrolmentPlatformRestriction -os Windows | Where-Object { ($_.platformRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.platformRestriction.osMinimumVersion) -or ($_.windowsRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.windowsRestriction.osMinimumVersion) }
     if ($null -ne $windowsPlatformRestrictions) {
         Write-Host "`n`nFound $($windowsPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
@@ -1598,7 +1595,7 @@ if ($platformRestrictions -eq $true) {
 
     #region iOS/iPadOS
     $os = 'iOS/iPadOS'
-    $osImageUrl = $iOSMAM
+    $osImageUrl = $iOSLogo
     $iOSPlatformRestrictions = Get-EnrolmentPlatformRestriction -os iOS | Where-Object { ($_.platformRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.platformRestriction.osMinimumVersion) -or ($_.iosRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.iosRestriction.osMinimumVersion) }
     if ($null -ne $iOSPlatformRestrictions) {
         Write-Host "`n`nFound $($iOSPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
@@ -1676,7 +1673,7 @@ if ($platformRestrictions -eq $true) {
 
     #region Android
     $os = 'Android'
-    $osImageUrl = $androidMAM
+    $osImageUrl = $androidLogo
     $androidPlatformRestrictions = Get-EnrolmentPlatformRestriction -os Android | Where-Object { ($_.platformRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.platformRestriction.osMinimumVersion) -or ($_.androidForWorkRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.androidForWorkRestriction.osMinimumVersion) }
     if ($null -ne $androidPlatformRestrictions) {
         Write-Host "`n`nFound $($androidPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
