@@ -1,6 +1,6 @@
 # 💻 IntuneOSCompliance
 
-The IntuneOSCompliance script is a PowerShell tool designed to automatically update operating system based compliance policies and app protection policies based on the latest supported released and updated Windows, Android, and Apple operating systems.
+The IntuneOSCompliance script is a PowerShell tool designed to automatically update operating system based [compliance policies](https://learn.microsoft.com/en-us/intune/device-security/compliance/overview), [app protection](https://learn.microsoft.com/en-us/intune/app-management/overview) policies, and detail updates required to [device enrolment platform restrictions](https://learn.microsoft.com/en-us/intune/device-enrollment/restrictions) based on the latest supported released and updated Windows, Android, and Apple operating systems.
 
 If configured the PowerShell script will also send a rich text Microsoft Teams card to an [Incoming Microsoft Teams Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook) with the results of the script run.
 
@@ -11,6 +11,10 @@ If configured the PowerShell script will also send a rich text Microsoft Teams c
 ## App Protection Updates
 
 ![Screenshot of the data sent to the Microsoft Teams incoming webhook](img/teams-ss-mam.png)
+
+## Device Enrolment Platform Restriction Updates
+
+![Screenshot of the data sent to the Microsoft Teams incoming webhook](img/teams-ss-platform.png)
 
 ## ⚠ Public Preview Notice
 
@@ -24,6 +28,7 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 - Uses APIs and RSS feeds to capture the latest supported build versions for Windows, Android, and Apple devices.
 - Detects all Compliance policies that support minimum operating system versions or minimum operating system build versions (Windows).
 - Detects all App Protection policies that support minimum operating system versions for Warning, Block, and Wipe Conditional launch actions.
+- Detects all Device Enrolment Platform Restrictions that support personal device enrolment and minOS or maxOS settings
 - For Compliance policies where the minimum operating systems are not current, updates the policy to the latest build version i.e. **26.0.1** to **26.3.1** or **10.0.26200.2356** to **10.0.26200.8246**
 - For App Protection policies where the minimum operating systems are not current, updates the policy to the latest version i.e. **17.0.0** to **26.0.0** or **13.0** to **16.0.0**
 - For App Protection policies with warning, block, and wipe actions will set the minimum operating system as n-1/n-2 behind the latest supported operating system version i.e. 16.0, 15.0, 14.0 or 26.0.0, 18.0.0, 17.0.0
@@ -41,7 +46,10 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
-- **v0.2.0**
+- **v0.3.0**
+  - Updated to support the review of Device Enrolment Platform Restrictions (no changes are made), you will need to add `DeviceManagementServiceConfig.ReadWrite.All` to the App Registration permissions
+  - Added parameters to support including or excluding policy types
+- v0.2.0
   - If a Teams Webhook is provided, report mode will send a notification of policies that need updating.
   - Identifies and notifies of end-of-life operating systems.
   - Uses consumer Windows editions (Home, Pro) for Windows MAM supported operating system versions.
@@ -57,7 +65,7 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## ⏯ Usage
 
-Running the script without selecting any additional parameters will run the PowerShell script in report only mode, where it will check your existing Compliance and App Protection policies.
+Running the script without selecting any additional parameters will run the PowerShell script in report only mode, where it will check your existing Compliance, App Protection policies, and Device Platform Enrolment Restrictions.
 
 ### Teams Web Hooks
 
@@ -118,6 +126,7 @@ Create an Entra ID App Registration with the following Graph API Application per
 
 - `DeviceManagementApps.ReadWrite.All`
 - `DeviceManagementConfiguration.Read.All`
+- `DeviceManagementServiceConfig.ReadWrite.All`
 
 Create an App Secret for the App Registration to be used when running the script.
 
