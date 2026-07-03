@@ -39,24 +39,24 @@ Uses available APIs to check the latest available OS builds for supported platfo
 .PARAMETER report
 Set to $true to only report out of date policies in the console output without making any changes. Default is $true.
 
-.PARAMETER teamsWebHook
-Provide the Microsoft Teams webhook URL to send notifications to. If not provided, notifications will not be sent.
-https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook
+.PARAMETER compliance
+Specify whether compliance policies should be in scope of updates. Default is $true (compliance policies will be updated).
 
 .PARAMETER complianceOffset
 Specify whether Compliance policies require the latest version of the operating system or a version behind the latest (e.g. n-1). Default is 0 (latest version).
 
+.PARAMETER mam
+Specify whether app protection policies should be in scope of updates. Default is $true (app protection policies will be updated).
+
 .PARAMETER mamOffset
 Specify whether App Protection policies require the latest version of the operating system or a version behind the latest (e.g. n-1). Default is 0 (latest version).
 
-.PARAMETER compliance
-Specify whether compliance policies should be in scope of updates. Default is $true (compliance policies will be updated).
-
-.PARAMETER appProtection
-Specify whether app protection policies should be in scope of updates. Default is $true (app protection policies will be updated).
-
 .PARAMETER platformRestrictions
-Specify whether platform restrictions should be in scope of updates. Default is $false (platform restrictions will not be updated).
+Specify whether platform restrictions should be in scope of updates. Default is $true (platform restrictions will be reviewed only due to permissions restrictions).
+
+.PARAMETER teamsWebHook
+Provide the Microsoft Teams webhook URL to send notifications to. If not provided, notifications will not be sent.
+https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook
 
 .PARAMETER tenantId
 Provide the Id of the Entra ID tenant to connect to.
@@ -97,25 +97,25 @@ param(
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether compliance policies are in scope of updates')]
     [bool]$compliance = $true,
 
+    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether Compliance policies require the latest version of the operating system or a minor version behind the latest (e.g. n-1)')]
+    [ValidateRange(0, 2)]
+    [int]$complianceOffset = 0,
+
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether app protection policies are in scope of updates')]
-    [bool]$appProtection = $true,
+    [bool]$mam = $true,
+
+    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether App Protection policies require the latest version of the operating system or a major version behind the latest (e.g. n-1)')]
+    [ValidateRange(0, 2)]
+    [int]$mamOffset = 0,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether platform restrictions are in scope of updates')]
-    [bool]$platformRestrictions = $false,
+    [bool]$platformRestrictions = $true,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
     [bool]$report = $true,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Microsoft Teams webhook URL to send notifications to')]
     [String]$teamsWebHook,
-
-    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether Compliance policies require the latest version of the operating system or a minor version behind the latest (e.g. n-1)')]
-    [ValidateRange(0, 2)]
-    [int]$complianceOffset = 0,
-
-    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether App Protection policies require the latest version of the operating system or a major version behind the latest (e.g. n-1)')]
-    [ValidateRange(0, 2)]
-    [int]$mamOffset = 0,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Provide the Id of the Entra ID tenant to connect to')]
     [ValidateLength(36, 36)]
@@ -615,12 +615,11 @@ $windowsMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/ref
 $windowsRestrictions = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win-com.png'
 $macOSCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/mac-com.png'
 
-
 $scopes = @()
 if ($compliance -eq $true) {
     $scopes += 'DeviceManagementApps.ReadWrite.All'
 }
-if ($appProtection -eq $true) {
+if ($mam -eq $true) {
     $scopes += 'DeviceManagementApps.ReadWrite.All'
 }
 if ($platformRestrictions -eq $true) {
@@ -653,7 +652,7 @@ Write-Host '
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
 Write-Host ' | Version' -NoNewline; Write-Host ' 0.3.0 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-02' -ForegroundColor Magenta
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-03' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -725,6 +724,7 @@ if ($compliance -eq $true) {
     $os = 'Windows'
     $osImageUrl = $windowsCompliance
     $windowsCompliancePolicies = Get-DeviceCompliancePolicy -os Windows | Where-Object { ($_.validOperatingSystemBuildRanges -ne $null -or $_.osMinimumVersion -ne $null) }
+
     if ($null -ne $windowsCompliancePolicies) {
         Write-Host "`n`nFound $($windowsCompliancePolicies.Count) $os $policyType policies with operating system build ranges or minimum versions." -ForegroundColor Magenta
         $windowsSupported = Get-EndOfLifeDate -os Windows
@@ -876,6 +876,7 @@ if ($compliance -eq $true) {
     #endregion
 
     #region macOS
+
     $os = 'macOS'
     $osImageUrl = $macOSCompliance
     $macOSCompliancePolicies = Get-DeviceCompliancePolicy -os macOS | Where-Object { $_.osMinimumVersion -ne $null }
@@ -987,6 +988,7 @@ if ($compliance -eq $true) {
     #endregion
 
     #region iOS/iPadOS
+
     $os = 'iOS/iPadOS'
     $osImageUrl = $iOSCompliance
     $iOSCompliancePolicies = Get-DeviceCompliancePolicy -os iOS | Where-Object { $_.osMinimumVersion -ne $null }
@@ -1100,6 +1102,7 @@ if ($compliance -eq $true) {
     $os = 'Android'
     $osImageUrl = $androidCompliance
     $androidCompliancePolicies = Get-DeviceCompliancePolicy -os Android | Where-Object { $_.osMinimumVersion -ne $null }
+
     if ($null -ne $androidCompliancePolicies) {
         Write-Host "`n`nFound $($androidCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
         $androidSupported = Get-EndOfLifeDate -os Android
@@ -1212,13 +1215,14 @@ if ($compliance -eq $true) {
 #endregion
 
 #region mam
-if ($appProtection -eq $true) {
+if ($mam -eq $true) {
     $policyType = 'App Protection'
 
     #region Windows
     $os = 'Windows'
     $osImageUrl = $windowsMAM
     $windowsAppProtectionPolicies = Get-AppProtectionPolicy -os Windows | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null -or $_.minimumWipeOsVersion -ne $null }
+
     if ($null -ne $windowsAppProtectionPolicies) {
         Write-Host "`n`nFound $($windowsAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
         $windowsSupported = Get-EndOfLifeDate -os Windows -sku Consumer
@@ -1320,6 +1324,7 @@ if ($appProtection -eq $true) {
     $os = 'iOS/iPadOS'
     $osImageUrl = $iOSMAM
     $iOSAppProtectionPolicies = Get-AppProtectionPolicy -os iOS | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
+
     if ($null -ne $iOSAppProtectionPolicies) {
         Write-Host "`n`nFound $($iOSAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
         $iOSSupported = Get-EndOfLifeDate -os iOS
@@ -1419,6 +1424,7 @@ if ($appProtection -eq $true) {
     $os = 'Android'
     $osImageUrl = $androidMAM
     $androidAppProtectionPolicies = Get-AppProtectionPolicy -os Android | Where-Object { $_.minimumRequiredOsVersion -ne $null -or $_.minimumWarningOsVersion -ne $null }
+
     if ($null -ne $androidAppProtectionPolicies) {
         Write-Host "`n`nFound $($androidAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
         $androidSupported = Get-EndOfLifeDate -os Android
@@ -1526,6 +1532,7 @@ if ($platformRestrictions -eq $true) {
     $os = 'Windows'
     $osImageUrl = $windowsRestrictions
     $windowsPlatformRestrictions = Get-EnrolmentPlatformRestriction -os Windows | Where-Object { ($_.platformRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.platformRestriction.osMinimumVersion) -or ($_.windowsRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.windowsRestriction.osMinimumVersion) }
+
     if ($null -ne $windowsPlatformRestrictions) {
         Write-Host "`n`nFound $($windowsPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
         $windowsSupported = Get-EndOfLifeDate -os Windows -sku Consumer | Where-Object { $_.isEol -eq $false }
@@ -1539,21 +1546,26 @@ if ($platformRestrictions -eq $true) {
             $updateItems += @{isSubtle = $true ; size = 'Small'; text = "$policyType - $os"; wrap = $true ; type = 'TextBlock' }
             $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
-            $minOS = $platformRestriction.platformRestriction.osMinimumVersion
-            $maxOS = $platformRestriction.platformRestriction.osMaximumVersion
 
-            if ($minOS -ne $newMinOS) {
-                $policyChange = $true
-                Write-Host "$os $policyType policy should be updated for minOS $minOS to $newMinOS" -ForegroundColor Yellow
-                $updateItems += @{text = "Minimum OS version **should be updated** from $minOS to $newMinOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-                $platformRestriction.platformRestriction.osMinimumVersion = $newMinOS
+            if ($platformRestriction.priority -eq 0) {
+                $minOS = $platformRestriction.windowsRestriction.osMinimumVersion
+                $maxOS = $platformRestriction.windowsRestriction.osMaximumVersion
+            }
+            else {
+                $minOS = $platformRestriction.platformRestriction.osMinimumVersion
+                $maxOS = $platformRestriction.platformRestriction.osMaximumVersion
             }
 
-            if ($maxOS -ne $newMaxOS) {
+            if ($minOS -ne $newMinOS -and $null -ne $minOS -and $minOS -ne '') {
                 $policyChange = $true
-                Write-Host "$os $policyType policy should be updated for maxOS $maxOS to $newMaxOS" -ForegroundColor Yellow
+                Write-Host "$os $policyType policy should be updated for minOS from $minOS to $newMinOS" -ForegroundColor Yellow
+                $updateItems += @{text = "Minimum OS version **should be updated** from $minOS to $newMinOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            }
+
+            if ($maxOS -ne $newMaxOS -and $null -ne $maxOS -and $maxOS -ne '') {
+                $policyChange = $true
+                Write-Host "$os $policyType policy should be updated for maxOS from $maxOS to $newMaxOS" -ForegroundColor Yellow
                 $updateItems += @{text = "Maximum OS version **should be updated** from $maxOS to $newMaxOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-                $platformRestriction.platformRestriction.osMaximumVersion = $newMaxOS
             }
 
             if ($policyChange -eq $true) {
@@ -1604,6 +1616,7 @@ if ($platformRestrictions -eq $true) {
     $os = 'iOS/iPadOS'
     $osImageUrl = $iOSRestrictions
     $iOSPlatformRestrictions = Get-EnrolmentPlatformRestriction -os iOS | Where-Object { ($_.platformRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.platformRestriction.osMinimumVersion) -or ($_.iosRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.iosRestriction.osMinimumVersion) }
+
     if ($null -ne $iOSPlatformRestrictions) {
         Write-Host "`n`nFound $($iOSPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
         $iOSSupported = Get-EndOfLifeDate -os iOS | Where-Object { $_.isEol -eq $false }
@@ -1617,21 +1630,26 @@ if ($platformRestrictions -eq $true) {
             $updateItems += @{isSubtle = $true ; size = 'Small'; text = "$policyType - $os"; wrap = $true ; type = 'TextBlock' }
             $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
-            $minOS = $platformRestriction.platformRestriction.osMinimumVersion
-            $maxOS = $platformRestriction.platformRestriction.osMaximumVersion
 
-            if ($minOS -ne $newMinOS) {
-                $policyChange = $true
-                Write-Host "$os $policyType policy should be updated for minOS $minOS to $newMinOS" -ForegroundColor Yellow
-                $updateItems += @{text = "Minimum OS version **should be updated** from $minOS to $newMinOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-                $platformRestriction.platformRestriction.osMinimumVersion = $newMinOS
+            if ($platformRestriction.priority -eq 0) {
+                $minOS = $platformRestriction.iosRestriction.osMinimumVersion
+                $maxOS = $platformRestriction.iosRestriction.osMaximumVersion
+            }
+            else {
+                $minOS = $platformRestriction.platformRestriction.osMinimumVersion
+                $maxOS = $platformRestriction.platformRestriction.osMaximumVersion
             }
 
-            if ($maxOS -ne $newMaxOS) {
+            if ($minOS -ne $newMinOS -and $null -ne $minOS -and $minOS -ne '') {
                 $policyChange = $true
-                Write-Host "$os $policyType policy should be updated for maxOS $maxOS to $newMaxOS" -ForegroundColor Yellow
+                Write-Host "$os $policyType policy should be updated for minOS from $minOS to $newMinOS" -ForegroundColor Yellow
+                $updateItems += @{text = "Minimum OS version **should be updated** from $minOS to $newMinOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            }
+
+            if ($maxOS -ne $newMaxOS -and $null -ne $maxOS -and $maxOS -ne '') {
+                $policyChange = $true
+                Write-Host "$os $policyType policy should be updated for maxOS from $maxOS to $newMaxOS" -ForegroundColor Yellow
                 $updateItems += @{text = "Maximum OS version **should be updated** from $maxOS to $newMaxOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-                $platformRestriction.platformRestriction.osMaximumVersion = $newMaxOS
             }
 
             if ($policyChange -eq $true) {
@@ -1682,6 +1700,7 @@ if ($platformRestrictions -eq $true) {
     $os = 'Android'
     $osImageUrl = $androidRestrictions
     $androidPlatformRestrictions = Get-EnrolmentPlatformRestriction -os Android | Where-Object { ($_.platformRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.platformRestriction.osMinimumVersion) -or ($_.androidForWorkRestriction.personalDeviceEnrollmentBlocked -eq $false -and $null -ne $_.androidForWorkRestriction.osMinimumVersion) }
+
     if ($null -ne $androidPlatformRestrictions) {
         Write-Host "`n`nFound $($androidPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
         $androidSupported = Get-EndOfLifeDate -os Android | Where-Object { $_.isEol -eq $false }
@@ -1695,21 +1714,26 @@ if ($platformRestrictions -eq $true) {
             $updateItems += @{isSubtle = $true ; size = 'Small'; text = "$policyType - $os"; wrap = $true ; type = 'TextBlock' }
             $updateItems += @{text = "$policyDisplayName"; weight = 'Bolder'; wrap = $true; type = 'TextBlock'; spacing = 'None' }
             Write-Host "`nChecking $os $policyType policy - $policyDisplayName" -ForegroundColor Cyan
-            $minOS = $platformRestriction.platformRestriction.osMinimumVersion
-            $maxOS = $platformRestriction.platformRestriction.osMaximumVersion
 
-            if ($minOS -ne $newMinOS) {
-                $policyChange = $true
-                Write-Host "$os $policyType policy should be updated for minOS $minOS to $newMinOS" -ForegroundColor Yellow
-                $updateItems += @{text = "Minimum OS version **should be updated** from $minOS to $newMinOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-                $platformRestriction.platformRestriction.osMinimumVersion = $newMinOS
+            if ($platformRestriction.priority -eq 0) {
+                $minOS = $platformRestriction.androidForWorkRestriction.osMinimumVersion
+                $maxOS = $platformRestriction.androidForWorkRestriction.osMaximumVersion
+            }
+            else {
+                $minOS = $platformRestriction.platformRestriction.osMinimumVersion
+                $maxOS = $platformRestriction.platformRestriction.osMaximumVersion
             }
 
-            if ($maxOS -ne $newMaxOS) {
+            if ($minOS -ne $newMinOS -and $null -ne $minOS -and $minOS -ne '') {
                 $policyChange = $true
-                Write-Host "$os $policyType policy should be updated for maxOS $maxOS to $newMaxOS" -ForegroundColor Yellow
+                Write-Host "$os $policyType policy should be updated for minOS from $minOS to $newMinOS" -ForegroundColor Yellow
+                $updateItems += @{text = "Minimum OS version **should be updated** from $minOS to $newMinOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+            }
+
+            if ($maxOS -ne $newMaxOS -and $null -ne $maxOS -and $maxOS -ne '') {
+                $policyChange = $true
+                Write-Host "$os $policyType policy should be updated for maxOS from $maxOS to $newMaxOS" -ForegroundColor Yellow
                 $updateItems += @{text = "Maximum OS version **should be updated** from $maxOS to $newMaxOS"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
-                $platformRestriction.platformRestriction.osMaximumVersion = $newMaxOS
             }
 
             if ($policyChange -eq $true) {
