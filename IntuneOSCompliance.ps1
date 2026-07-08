@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.3.0
+.VERSION 0.3.1
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.3.1 - Set Enrollment Platform Restiction parameter to false to not break existing deployments where permissions have not been set
 v0.3.0 - Updated to support Device Platform Restrictions
 v0.2.0 - Teams notification in report mode and highlighting of end-of-life operating system versions in policies
 v0.1.9 - Updated to Windows build function as Microsoft changed the format of their update feed
@@ -109,7 +110,7 @@ param(
     [int]$mamOffset = 0,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether platform restrictions are in scope of updates')]
-    [bool]$platformRestrictions = $true,
+    [bool]$platformRestrictions = $false,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
     [bool]$report = $true,
@@ -651,8 +652,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.3.0 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-03' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.3.1 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-08' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
