@@ -14,7 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
-v0.3.1 - Set Enrollment Platform Restiction parameter to false to not break existing deployments where permissions have not been set
+v0.3.1 - Set Enrolment Platform Restriction parameter to false to not break existing deployments where permissions have not been set
 v0.3.0 - Updated to support Device Platform Restrictions
 v0.2.0 - Teams notification in report mode and highlighting of end-of-life operating system versions in policies
 v0.1.9 - Updated to Windows build function as Microsoft changed the format of their update feed
@@ -53,7 +53,7 @@ Specify whether app protection policies should be in scope of updates. Default i
 Specify whether App Protection policies require the latest version of the operating system or a version behind the latest (e.g. n-1). Default is 0 (latest version).
 
 .PARAMETER platformRestrictions
-Specify whether platform restrictions should be in scope of updates. Default is $true (platform restrictions will be reviewed only due to permissions restrictions).
+Specify whether platform restrictions should be in scope of updates. Default is $false (platform restrictions will be reviewed only due to permissions restrictions).
 
 .PARAMETER teamsWebHook
 Provide the Microsoft Teams webhook URL to send notifications to. If not provided, notifications will not be sent.
