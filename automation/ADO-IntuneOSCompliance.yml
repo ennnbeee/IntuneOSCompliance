@@ -51,8 +51,12 @@ jobs:
               -appSecret   $env:APP_SECRET `
               -teamsWebHook $env:TEAMS_WEBHOOK `
               -report      $false `
+              -compliance $true `
               -complianceOffset 0 `
-              -mamOffset 0
+              -mam $true `
+              -mamOffset 0 `
+              -platformRestriction $false `
+              -useGraphForWindowsUpdates $false
         env:
           TENANT_ID: $(TENANT_ID)
           APP_ID: $(APP_ID)

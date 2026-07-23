@@ -39,5 +39,9 @@ jobs:
             -appSecret   $env:APP_SECRET `
             -teamsWebHook $env:TEAMS_WEBHOOK `
             -report      $false `
+            -compliance $true `
             -complianceOffset 0 `
-            -mamOffset 0
+            -mam $true `
+            -mamOffset 0 `
+            -platformRestrictions $false `
+            -useGraphForWindowsUpdates $false
