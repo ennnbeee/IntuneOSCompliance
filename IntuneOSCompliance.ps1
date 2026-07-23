@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.4.0
+.VERSION 0.4.1
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.4.1 - Updated logic on the Graph API call for Windows updates
 v0.4.0 - Option to use Graph API for the Windows Updates data
 v0.3.2 - Better handling of Windows 26H1
 v0.3.1 - Set Enrolment Platform Restriction parameter to false to not break existing deployments where permissions have not been set
@@ -531,7 +532,7 @@ function Get-WindowsUpdateBuildGraph {
             $results += $additional.value
         }
 
-        $filteredResults = $results | Where-Object { $_.catalogName -notlike '*Preview*' -and $_.qualityUpdateClassification -eq 'Security' } | ForEach-Object {
+        $filteredResults = $results | Where-Object { $_.catalogName -notlike '*Preview*' -and $_.shortName -like '*B*'} | ForEach-Object {
             $_.productRevisions.id | Where-Object { $_ -like "*$osVersion*" }
         } | Sort-Object -Descending
 
@@ -703,7 +704,7 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.4.0 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.4.1 Public Preview' -ForegroundColor Yellow -NoNewline
 Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-23' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
