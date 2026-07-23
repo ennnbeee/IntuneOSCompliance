@@ -55,7 +55,7 @@ jobs:
               -complianceOffset 0 `
               -mam $true `
               -mamOffset 0 `
-              -platformRestriction $false `
+              -platformRestrictions $false `
               -useGraphForWindowsUpdates $false
         env:
           TENANT_ID: $(TENANT_ID)
