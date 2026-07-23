@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.3.1
+.VERSION 0.3.2
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.3.2 - Better handling of Windows 26H1
 v0.3.1 - Set Enrolment Platform Restriction parameter to false to not break existing deployments where permissions have not been set
 v0.3.0 - Updated to support Device Platform Restrictions
 v0.2.0 - Teams notification in report mode and highlighting of end-of-life operating system versions in policies
@@ -587,7 +588,7 @@ function Get-EndOfLifeDate {
                 $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-e*' -and $_.name -notlike '*26h1*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
             }
             else {
-                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' -and $_.name -notlike '*26h1*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
             }
 
         }
@@ -652,8 +653,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.3.1 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-08' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.3.2 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-23' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -1227,9 +1228,9 @@ if ($mam -eq $true) {
     if ($null -ne $windowsAppProtectionPolicies) {
         Write-Host "`n`nFound $($windowsAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
         $windowsSupported = Get-EndOfLifeDate -os Windows -sku Consumer
-        $newWarning = "$($windowsSupported.LatestName[$mamOffset]).0"
-        $newRequired = "$($windowsSupported.LatestName[$mamOffset + 1]).0"
-        $newWipe = "$($windowsSupported.LatestName[$mamOffset + 2]).0"
+        $newWarning = "$($windowsSupported.LatestName[1 +$mamOffset]).0"
+        $newRequired = "$($windowsSupported.LatestName[$mamOffset + 2]).0"
+        $newWipe = "$($windowsSupported.LatestName[$mamOffset + 3]).0"
 
         foreach ($appProtectionPolicy in $windowsAppProtectionPolicies) {
             $policyChange = $false
