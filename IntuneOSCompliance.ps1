@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.3.2
+.VERSION 0.4.0
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.4.0 - Option to use Graph API for the Windows Updates data
 v0.3.2 - Better handling of Windows 26H1
 v0.3.1 - Set Enrolment Platform Restriction parameter to false to not break existing deployments where permissions have not been set
 v0.3.0 - Updated to support Device Platform Restrictions
@@ -55,6 +56,9 @@ Specify whether App Protection policies require the latest version of the operat
 
 .PARAMETER platformRestrictions
 Specify whether platform restrictions should be in scope of updates. Default is $false (platform restrictions will be reviewed only due to permissions restrictions).
+
+.PARAMETER useGraphForWindowsUpdates
+Specify whether to use the Graph API for retrieving Windows Updates data. Default is $false (the script will use the default method for retrieving Windows Updates data).
 
 .PARAMETER teamsWebHook
 Provide the Microsoft Teams webhook URL to send notifications to. If not provided, notifications will not be sent.
@@ -112,6 +116,9 @@ param(
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether platform restrictions are in scope of updates')]
     [bool]$platformRestrictions = $false,
+
+    [Parameter(Mandatory = $false, HelpMessage = 'Specify whether to use the Graph API for retrieving Windows Updates data')]
+    [bool]$useGraphForWindowsUpdates = $false,
 
     [Parameter(Mandatory = $false, HelpMessage = 'Sets whether policy changes are made or just reported in the console output')]
     [bool]$report = $true,
@@ -495,6 +502,46 @@ function Get-WindowsUpdateBuild() {
         throw
     }
 }
+function Get-WindowsUpdateBuildGraph {
+
+    [cmdletbinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$osVersion
+    )
+
+    $graphApiVersion = 'Beta'
+    $Resource = 'admin/windows/updates/catalog/entries?$expand=microsoft.graph.windowsUpdates.qualityUpdateCatalogEntry/productRevisions'
+
+    try {
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        $graphResults = Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject
+
+        $results = @()
+        $results += $graphResults.value
+
+        $pages = $graphResults.'@odata.nextLink'
+        while ($null -ne $pages) {
+
+            $additional = Invoke-MgGraphRequest -Uri $pages -Method Get -OutputType PSObject
+
+            if ($pages) {
+                $pages = $additional.'@odata.nextLink'
+            }
+            $results += $additional.value
+        }
+
+        $filteredResults = $results | Where-Object { $_.catalogName -notlike '*Preview*' -and $_.qualityUpdateClassification -eq 'Security' } | ForEach-Object {
+            $_.productRevisions.id | Where-Object { $_ -like "*$osVersion*" }
+        } | Sort-Object -Descending
+
+        return $filteredResults
+    }
+    catch {
+        Write-Error $_.Exception.Message
+        throw
+    }
+}
 function Get-AppleUpdateBuild() {
 
     [cmdletbinding()]
@@ -627,6 +674,9 @@ if ($mam -eq $true) {
 if ($platformRestrictions -eq $true) {
     $scopes += 'DeviceManagementServiceConfig.ReadWrite.All'
 }
+if ($useGraphForWindowsUpdates -eq $true) {
+    $scopes += 'WindowsUpdates.Read.All'
+}
 
 $teamsItems = @()
 $dateTime = Get-Date -Format 'HH:mm:ss dd/MM/yyyy'
@@ -653,7 +703,7 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.3.2 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.4.0 Public Preview' -ForegroundColor Yellow -NoNewline
 Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-23' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
@@ -747,7 +797,12 @@ if ($compliance -eq $true) {
             $version = $_
             $windowsBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = $(Get-WindowsUpdateBuild -osVersion $version)[$complianceOffset]
+                latestBuild = $(if ($useGraphForWindowsUpdates -eq $true) {
+                        $(Get-WindowsUpdateBuildGraph -osVersion $version)[$complianceOffset]
+                    }
+                    else {
+                        $(Get-WindowsUpdateBuild -osVersion $version)[$complianceOffset]
+                    })
                 isEol       = $windowsSupported | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol
             }
         }
@@ -1228,9 +1283,9 @@ if ($mam -eq $true) {
     if ($null -ne $windowsAppProtectionPolicies) {
         Write-Host "`n`nFound $($windowsAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
         $windowsSupported = Get-EndOfLifeDate -os Windows -sku Consumer
-        $newWarning = "$($windowsSupported.LatestName[1 +$mamOffset]).0"
-        $newRequired = "$($windowsSupported.LatestName[$mamOffset + 2]).0"
-        $newWipe = "$($windowsSupported.LatestName[$mamOffset + 3]).0"
+        $newWarning = "$($windowsSupported.LatestName[$mamOffset]).0"
+        $newRequired = "$($windowsSupported.LatestName[$mamOffset + 1]).0"
+        $newWipe = "$($windowsSupported.LatestName[$mamOffset + 2]).0"
 
         foreach ($appProtectionPolicy in $windowsAppProtectionPolicies) {
             $policyChange = $false

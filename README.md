@@ -46,7 +46,10 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
-- **v0.3.0**
+- **v0.4.0**
+  - Option to use Graph API for Windows Updates data as is a maintained source compared to the Atom feed.
+  - Use the `useGraphForWindowsUpdates` boolean parameter to use Graph API, additional permissions are required to `WindowsUpdates.Read.All`
+- v0.3.0
   - Updated to support the review of Device Enrolment Platform Restrictions (no changes are made), you will need to add `DeviceManagementServiceConfig.ReadWrite.All` to the App Registration permissions
   - Added parameters to support including or excluding policy types
 - v0.2.0
