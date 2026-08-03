@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.4.2
+.VERSION 0.4.3
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.4.3 - Improved logic around MAM and offset handling and fixed issue with OS version format validation for iOS and macOS
 v0.4.2 - Validation on gathered build numbers for compliance policies to ensure they are in the correct format before updating policies
 v0.4.1 - Updated logic on the Graph API call for Windows updates
 v0.4.0 - Option to use Graph API for the Windows Updates data
@@ -705,8 +706,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.4.2 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-07-24' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.4.3 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-08-03' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -781,10 +782,9 @@ if ($compliance -eq $true) {
 
     if ($null -ne $windowsCompliancePolicies) {
         Write-Host "`n`nFound $($windowsCompliancePolicies.Count) $os $policyType policies with operating system build ranges or minimum versions." -ForegroundColor Magenta
-        $windowsSupported = Get-EndOfLifeDate -os Windows
+        $windowsOS = Get-EndOfLifeDate -os Windows
         $windowsVersions = @()
         $windowsBuilds = @()
-        $windowsValidation = 0
 
         $windowsCompliancePolicies.osMinimumVersion | ForEach-Object {
             if ($null -ne $_) {
@@ -806,7 +806,7 @@ if ($compliance -eq $true) {
                     else {
                         $(Get-WindowsUpdateBuild -osVersion $version)[$complianceOffset]
                     })
-                isEol       = $windowsSupported | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol
+                isEol       = $windowsOS | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -950,13 +950,12 @@ if ($compliance -eq $true) {
     #endregion
 
     #region macOS
-
     $os = 'macOS'
     $osImageUrl = $macOSCompliance
     $macOSCompliancePolicies = Get-DeviceCompliancePolicy -os macOS | Where-Object { $_.osMinimumVersion -ne $null }
     if ($null -ne $macOSCompliancePolicies) {
         Write-Host "`n`nFound $($macOSCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
-        $macOSSupported = Get-EndOfLifeDate -os macOS
+        $macOSOS = Get-EndOfLifeDate -os macOS
         $macOSVersions = @()
         $macOSBuilds = @()
 
@@ -969,7 +968,7 @@ if ($compliance -eq $true) {
             $macOSBuilds += [PSCustomObject]@{
                 version     = $version
                 latestBuild = (Get-AppleUpdateBuild -OS 'macOS' -osVersion $version)[$complianceOffset]
-                isEol       = $macOSSupported | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
+                isEol       = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -985,7 +984,7 @@ if ($compliance -eq $true) {
             $latestBuild = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
             $buildEol = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
 
-            if ($latestBuild -match '^\d{2}\.\d{1,2}\.\d{1,2}$') {
+            if ($latestBuild -match '^\d{2}\.\d{1,2}\.\d{1,2}$' -or $latestBuild -match '^\d{2}\.\d{1,2}$') {
                 # end of life but up to date
                 if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -eq $minVersion) {
                     Write-Host "$os $policyType policy with $os $osVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
@@ -1068,13 +1067,12 @@ if ($compliance -eq $true) {
     #endregion
 
     #region iOS/iPadOS
-
     $os = 'iOS/iPadOS'
     $osImageUrl = $iOSCompliance
     $iOSCompliancePolicies = Get-DeviceCompliancePolicy -os iOS | Where-Object { $_.osMinimumVersion -ne $null }
     if ($null -ne $iOSCompliancePolicies) {
         Write-Host "`n`nFound $($iOSCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
-        $iOSSupported = Get-EndOfLifeDate -os iOS
+        $iOSOS = Get-EndOfLifeDate -os iOS
         $iOSVersions = @()
         $iOSBuilds = @()
 
@@ -1087,7 +1085,7 @@ if ($compliance -eq $true) {
             $iOSBuilds += [PSCustomObject]@{
                 version     = $version
                 latestBuild = (Get-AppleUpdateBuild -OS 'iOS' -osVersion $version)[$complianceOffset]
-                isEol       = $iOSSupported | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
+                isEol       = $iOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -1103,7 +1101,7 @@ if ($compliance -eq $true) {
             $latestBuild = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
             $buildEol = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
 
-            if ($latestBuild -match '^\d{2}\.\d{1,2}\.\d{1,2}$') {
+            if ($latestBuild -match '^\d{2}\.\d{1,2}\.\d{1,2}$' -or $latestBuild -match '^\d{2}\.\d{1,2}$') {
                 if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -eq $minVersion) {
                     Write-Host "$os $policyType policy with $os $osVersion is end-of-life and should be removed from the policy" -ForegroundColor Red
                     $updateItems += @{text = "$os $osVersion is end-of-life and should be removed from the policy"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
@@ -1191,7 +1189,7 @@ if ($compliance -eq $true) {
 
     if ($null -ne $androidCompliancePolicies) {
         Write-Host "`n`nFound $($androidCompliancePolicies.Count) $os $policyType policies with Minimum OS Version." -ForegroundColor Magenta
-        $androidSupported = Get-EndOfLifeDate -os Android
+        $androidOS = Get-EndOfLifeDate -os Android
         $androidVersions = @()
         $androidBuilds = @()
         $androidPatch = Get-AndroidUpdateBuild
@@ -1205,7 +1203,7 @@ if ($compliance -eq $true) {
             $androidBuilds += [PSCustomObject]@{
                 version     = $version
                 latestBuild = $androidPatch[$complianceOffset]
-                isEol       = $androidSupported | Where-Object { $($_.name + '.0') -eq "$version" -or $_.name -eq "$version" } | Select-Object -ExpandProperty isEol
+                isEol       = $androidOS | Where-Object { $($_.name + '.0') -eq "$version" -or $_.name -eq "$version" } | Select-Object -ExpandProperty isEol
             }
         }
 
@@ -1317,10 +1315,10 @@ if ($mam -eq $true) {
 
     if ($null -ne $windowsAppProtectionPolicies) {
         Write-Host "`n`nFound $($windowsAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
-        $windowsSupported = Get-EndOfLifeDate -os Windows -sku Consumer
-        $newWarning = "$($windowsSupported.LatestName[$mamOffset]).0"
-        $newRequired = "$($windowsSupported.LatestName[$mamOffset + 1]).0"
-        $newWipe = "$($windowsSupported.LatestName[$mamOffset + 2]).0"
+        $windowsOS = Get-EndOfLifeDate -os Windows -sku Consumer
+        $newWarning = "$($windowsOS.LatestName[$mamOffset]).0"
+        $newRequired = "$($windowsOS.LatestName[$mamOffset + 1]).0"
+        $newWipe = "$($windowsOS.LatestName[$mamOffset + 2]).0"
 
         foreach ($appProtectionPolicy in $windowsAppProtectionPolicies) {
             $policyChange = $false
@@ -1419,10 +1417,10 @@ if ($mam -eq $true) {
 
     if ($null -ne $iOSAppProtectionPolicies) {
         Write-Host "`n`nFound $($iOSAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
-        $iOSSupported = Get-EndOfLifeDate -os iOS
-        $newWarning = "$($iOSSupported.label[$mamOffset]).0.0"
-        $newRequired = "$($iOSSupported.label[$mamOffset + 1]).0.0"
-        $newWipe = "$($iOSSupported.label[$mamOffset + 2]).0.0"
+        $iOSOS = Get-EndOfLifeDate -os iOS
+        $newWarning = "$($iOSOS.label[$mamOffset]).0.0"
+        $newRequired = "$($iOSOS.label[$mamOffset + 1]).0.0"
+        $newWipe = "$($iOSOS.label[$mamOffset + 2]).0.0"
 
         foreach ($appProtectionPolicy in $iOSAppProtectionPolicies) {
             $policyChange = $false
@@ -1519,10 +1517,12 @@ if ($mam -eq $true) {
 
     if ($null -ne $androidAppProtectionPolicies) {
         Write-Host "`n`nFound $($androidAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
-        $androidSupported = Get-EndOfLifeDate -os Android
-        $newWarning = "$($androidSupported.name[$mamOffset]).0"
-        $newRequired = "$($androidSupported.name[$mamOffset + 1]).0"
-        $newWipe = "$($androidSupported.name[$mamOffset + 2]).0"
+        $androidOS= Get-EndOfLifeDate -os Android
+        $androidSupported = $androidSupported | Where-Object { $_.isEol -eq $false }
+
+        $newWarning = "$($androidOS.name[$mamOffset]).0"
+        $newRequired = "$($androidOS.name[$mamOffset + 1]).0"
+        $newWipe = "$($androidOS.name[$mamOffset + 2]).0"
 
         foreach ($appProtectionPolicy in $androidAppProtectionPolicies) {
             $policyChange = $false
@@ -1627,7 +1627,8 @@ if ($platformRestrictions -eq $true) {
 
     if ($null -ne $windowsPlatformRestrictions) {
         Write-Host "`n`nFound $($windowsPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
-        $windowsSupported = Get-EndOfLifeDate -os Windows -sku Consumer | Where-Object { $_.isEol -eq $false }
+        $windowsOS = Get-EndOfLifeDate -os Windows -sku Consumer
+        $windowsSupported = $windowsOS | Where-Object { $_.isEol -eq $false }
         $newMinOS = "$($windowsSupported[-1].LatestName).0000"
         $newMaxOS = "$($windowsSupported[0].LatestName).9999"
 
@@ -1711,7 +1712,8 @@ if ($platformRestrictions -eq $true) {
 
     if ($null -ne $iOSPlatformRestrictions) {
         Write-Host "`n`nFound $($iOSPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
-        $iOSSupported = Get-EndOfLifeDate -os iOS | Where-Object { $_.isEol -eq $false }
+        $iOSOS = Get-EndOfLifeDate -os iOS
+        $iOSSupported = $iOSOS | Where-Object { $_.isEol -eq $false }
         $newMinOS = "$($iOSSupported[-1].label).0.0"
         $newMaxOS = "$($iOSSupported[0].label).99.99"
 
@@ -1795,9 +1797,10 @@ if ($platformRestrictions -eq $true) {
 
     if ($null -ne $androidPlatformRestrictions) {
         Write-Host "`n`nFound $($androidPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
-        $androidSupported = Get-EndOfLifeDate -os Android | Where-Object { $_.isEol -eq $false }
-        $newMinOS = "$($androidSupported[-1].name).0.0"
-        $newMaxOS = "$($androidSupported[0].name).99.99"
+        $androidOS = Get-EndOfLifeDate -os Android
+        $androidOSSupported = $androidOS | Where-Object { $_.isEol -eq $false }
+        $newMinOS = "$($androidOSSupported[-1].name).0.0"
+        $newMaxOS = "$($androidOSSupported[0].name).99.99"
 
         foreach ($platformRestriction in $androidPlatformRestrictions) {
             $policyChange = $false
