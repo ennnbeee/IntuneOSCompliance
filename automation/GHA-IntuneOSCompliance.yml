@@ -44,4 +44,4 @@ jobs:
             -mam $true `
             -mamOffset 0 `
             -platformRestrictions $false `
-            -useGraphForWindowsUpdates $false
+            -useGraphForWindowsUpdates $true

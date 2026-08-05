@@ -46,7 +46,10 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
-- **v0.4.0**
+- **v0.5.0**
+  - Moved to using Graph for Windows Update build information as Microsoft have retired the Atom RSS feeds.
+  - The paramter `useGraphForWindowsUpdates` is set to `true` by default, ensure Graph permissions have been updated to support `WindowsUpdates.Read.All`
+- v0.4.0
   - Option to use Graph API for Windows Updates data as is a maintained source compared to the Atom feed.
   - Use the `useGraphForWindowsUpdates` boolean parameter to use Graph API, additional permissions are required to `WindowsUpdates.Read.All`
 - v0.3.0

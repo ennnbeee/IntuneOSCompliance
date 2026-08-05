@@ -56,7 +56,7 @@ jobs:
               -mam $true `
               -mamOffset 0 `
               -platformRestrictions $false `
-              -useGraphForWindowsUpdates $false
+              -useGraphForWindowsUpdates $true
         env:
           TENANT_ID: $(TENANT_ID)
           APP_ID: $(APP_ID)
