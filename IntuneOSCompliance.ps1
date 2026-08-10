@@ -682,7 +682,7 @@ if ($platformRestrictions -eq $true) {
 if ($useGraphForWindowsUpdates -eq $true) {
     $requiredScopes += 'WindowsUpdates.Read.All'
 }
-
+[String[]]$scopes = $requiredScopes -join ', '
 $teamsItems = @()
 $dateTime = Get-Date -Format 'HH:mm:ss dd/MM/yyyy'
 $rndWait = Get-Random -Minimum 1 -Maximum 2
