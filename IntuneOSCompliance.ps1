@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.5.0
+.VERSION 0.5.1
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.5.1 - Updated scope test to support app authentication
 v0.5.0 - Moved exclusively to Microsoft Graph API for all OS build data and policy updates, removed legacy methods
 v0.4.3 - Improved logic around MAM and offset handling and fixed issue with OS version format validation for iOS and macOS
 v0.4.2 - Validation on gathered build numbers for compliance policies to ensure they are in the correct format before updating policies
@@ -668,18 +669,18 @@ $windowsMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/ref
 $windowsRestrictions = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/win-com.png'
 $macOSCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/mac-com.png'
 
-$scopes = @()
+$requiredScopes = @()
 if ($compliance -eq $true) {
-    $scopes += 'DeviceManagementApps.ReadWrite.All'
+    $requiredScopes += 'DeviceManagementApps.ReadWrite.All'
 }
 if ($mam -eq $true) {
-    $scopes += 'DeviceManagementApps.ReadWrite.All'
+    $requiredScopes += 'DeviceManagementApps.ReadWrite.All'
 }
 if ($platformRestrictions -eq $true) {
-    $scopes += 'DeviceManagementServiceConfig.ReadWrite.All'
+    $requiredScopes += 'DeviceManagementServiceConfig.ReadWrite.All'
 }
 if ($useGraphForWindowsUpdates -eq $true) {
-    $scopes += 'WindowsUpdates.Read.All'
+    $requiredScopes += 'WindowsUpdates.Read.All'
 }
 
 $teamsItems = @()
@@ -707,8 +708,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.5.0 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-08-05' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.5.1 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-08-10' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
