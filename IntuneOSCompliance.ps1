@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.5.1
+.VERSION 0.5.2
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.5.2 - Support for AOSP
 v0.5.1 - Updated scope test to support app authentication
 v0.5.0 - Moved exclusively to Microsoft Graph API for all OS build data and policy updates, removed legacy methods
 v0.4.3 - Improved logic around MAM and offset handling and fixed issue with OS version format validation for iOS and macOS
@@ -250,7 +251,7 @@ function Get-DeviceCompliancePolicy {
 
         switch ($os) {
             'iOS' { $results = $results | Where-Object { $_.'@odata.type' -like '*ios*' } }
-            'Android' { $results = $results | Where-Object { $_.'@odata.type' -like '*android*' } }
+            'Android' { $results = $results | Where-Object { $_.'@odata.type' -like '*android*' -or $_.'@odata.type' -like '*aosp*'  } }
             'Windows' { $results = $results | Where-Object { $_.'@odata.type' -like '*windows*' } }
             'macOS' { $results = $results | Where-Object { $_.'@odata.type' -like '*macos*' } }
         }
@@ -708,8 +709,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.5.1 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-08-10' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.5.2 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-08-14' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
