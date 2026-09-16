@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.5.2
+.VERSION 0.5.3
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.5.3 - Added handling for macOS end-of-life status in compliance checks
 v0.5.2 - Support for AOSP
 v0.5.1 - Updated scope test to support app authentication
 v0.5.0 - Moved exclusively to Microsoft Graph API for all OS build data and policy updates, removed legacy methods
@@ -251,7 +252,7 @@ function Get-DeviceCompliancePolicy {
 
         switch ($os) {
             'iOS' { $results = $results | Where-Object { $_.'@odata.type' -like '*ios*' } }
-            'Android' { $results = $results | Where-Object { $_.'@odata.type' -like '*android*' -or $_.'@odata.type' -like '*aosp*'  } }
+            'Android' { $results = $results | Where-Object { $_.'@odata.type' -like '*android*' -or $_.'@odata.type' -like '*aosp*' } }
             'Windows' { $results = $results | Where-Object { $_.'@odata.type' -like '*windows*' } }
             'macOS' { $results = $results | Where-Object { $_.'@odata.type' -like '*macos*' } }
         }
@@ -709,8 +710,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.5.2 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-08-14' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.5.3 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-09-16' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -968,10 +969,18 @@ if ($compliance -eq $true) {
 
         $macOSVersions | Sort-Object -Unique | ForEach-Object {
             $version = $_
+            try {
+                $latestBuild = (Get-AppleUpdateBuild -OS 'macOS' -osVersion $version)[$complianceOffset]
+            }
+            catch {
+                $latestBuild = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty LatestName
+            }
+            $isEol = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
+
             $macOSBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = (Get-AppleUpdateBuild -OS 'macOS' -osVersion $version)[$complianceOffset]
-                isEol       = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
+                latestBuild = $latestBuild
+                isEol       = $isEol
             }
         }
 
@@ -1520,7 +1529,7 @@ if ($mam -eq $true) {
 
     if ($null -ne $androidAppProtectionPolicies) {
         Write-Host "`n`nFound $($androidAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
-        $androidOS= Get-EndOfLifeDate -os Android
+        $androidOS = Get-EndOfLifeDate -os Android
         $androidSupported = $androidSupported | Where-Object { $_.isEol -eq $false }
 
         $newWarning = "$($androidOS.name[$mamOffset]).0"
