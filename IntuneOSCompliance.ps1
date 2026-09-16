@@ -14,7 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
-v0.5.3 - Added handling for macOS end-of-life status in compliance checks
+v0.5.3 - Added handling for apple end-of-life status in compliance checks
 v0.5.2 - Support for AOSP
 v0.5.1 - Updated scope test to support app authentication
 v0.5.0 - Moved exclusively to Microsoft Graph API for all OS build data and policy updates, removed legacy methods
@@ -974,6 +974,9 @@ if ($compliance -eq $true) {
             }
             catch {
                 $latestBuild = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty LatestName
+                if ($latestBuild -notmatch '^\d{2}\.\d{1,2}$'){
+                    $latestBuild = $latestBuild + ".0"
+                }
             }
             $isEol = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
 
@@ -1094,10 +1097,21 @@ if ($compliance -eq $true) {
 
         $iOSVersions | Sort-Object -Unique | ForEach-Object {
             $version = $_
+            try {
+                $latestBuild = (Get-AppleUpdateBuild -OS 'iOS' -osVersion $version)[$complianceOffset]
+            }
+            catch {
+                $latestBuild = $iOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty LatestName
+                if ($latestBuild -notmatch '^\d{2}\.\d{1,2}$'){
+                    $latestBuild = $latestBuild + ".0"
+                }
+            }
+            $isEol = $iOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
+
             $iOSBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = (Get-AppleUpdateBuild -OS 'iOS' -osVersion $version)[$complianceOffset]
-                isEol       = $iOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
+                latestBuild = $latestBuild
+                isEol       = $isEol
             }
         }
 
