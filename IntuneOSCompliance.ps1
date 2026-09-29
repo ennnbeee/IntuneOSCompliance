@@ -627,10 +627,7 @@ function Get-AndroidUpdateBuild() {
 
         if ($patchLevels.Count -eq 0) { throw 'Could not find any patch level dates in the security bulletin table.' }
 
-        return $patchLevels |
-        Sort-Object -Property @{Expression = { [datetime]$_.version }; Descending = $false } |
-        Group-Object -Property version |
-        ForEach-Object { $_.Group[0] }
+        return $patchLevels
     }
     catch {
         Write-Error $_.Exception.Message
