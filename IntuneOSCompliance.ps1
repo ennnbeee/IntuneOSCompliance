@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.5.3
+.VERSION 0.5.4
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.6.0 - Support for links to update articles and bug fixes
 v0.5.3 - Added handling for apple end-of-life status in compliance checks
 v0.5.2 - Support for AOSP
 v0.5.1 - Updated scope test to support app authentication
@@ -538,11 +539,16 @@ function Get-WindowsUpdateBuildGraph {
             $results += $additional.value
         }
 
-        $filteredResults = $results | Where-Object { $_.catalogName -notlike '*Preview*' -and $_.shortName -like '*B*' } | ForEach-Object {
-            $_.productRevisions.id | Where-Object { $_ -like "*$osVersion*" }
-        } | Sort-Object -Descending
+        $filteredResults = foreach ($result in ($results | Where-Object { $_.catalogName -notlike '*Preview*' -and $_.shortName -like '*B*' })) {
+            foreach ($revision in ($result.productRevisions | Where-Object { $_.osBuild.buildNumber -eq [int]$osVersion })) {
+                [PSCustomObject]@{
+                    version = $revision.id
+                    link    = $revision.knowledgeBaseArticle.url
+                }
+            }
+        }
 
-        return $filteredResults
+        return $filteredResults | Sort-Object -Property version -Descending -Unique
     }
     catch {
         Write-Error $_.Exception.Message
@@ -569,11 +575,15 @@ function Get-AppleUpdateBuild() {
         $buildVersions = @()
         foreach ($update in $Updates.rss.channel.Item) {
             if (($update.title -like "*$OS*" -and $update.title -like "*$osVersion*") -and ($update.title -notlike '*beta*' -and $update.title -notlike '*RC*')) {
-                $buildVersions += ($Update.title -split ' ')[-1]
+                $buildVersions += [PSCustomObject]@{
+                    version = ($update.title -split ' ')[-1]
+                    link    = $update.link
+                    published = [datetimeoffset]$update.pubDate
+                }
             }
         }
 
-        return $buildVersions
+        return $buildVersions | Sort-Object -Property published -Descending -Unique
     }
     catch {
         Write-Error $_.Exception.Message
@@ -599,12 +609,28 @@ function Get-AndroidUpdateBuild() {
             if ($cells.Count -lt 4) { continue }
             $dates = [regex]::Matches($cells[3], '\b\d{4}-\d{2}-\d{2}\b') | ForEach-Object { $_.Value }
             if ($dates.Count -lt 1) { continue }
-            $patchLevels += ([datetime]$dates[0]).ToString('yyyy-MM-dd')
+
+            $patchLink = $uri
+            $linkMatch = [regex]::Match($row.Value, '(?is)href\s*=\s*"(?<url>[^"]+)"')
+            if ($linkMatch.Success) {
+                $patchLink = $linkMatch.Groups['url'].Value
+                if ($patchLink -notmatch '^https?://') {
+                    $patchLink = "https://source.android.com$patchLink"
+                }
+            }
+
+            $patchLevels += [PSCustomObject]@{
+                version = ([datetime]$dates[0]).ToString('yyyy-MM-dd')
+                link    = $patchLink
+            }
         }
 
         if ($patchLevels.Count -eq 0) { throw 'Could not find any patch level dates in the security bulletin table.' }
 
-        return $patchLevels
+        return $patchLevels |
+        Sort-Object -Property @{Expression = { [datetime]$_.version }; Descending = $false } |
+        Group-Object -Property version |
+        ForEach-Object { $_.Group[0] }
     }
     catch {
         Write-Error $_.Exception.Message
@@ -710,8 +736,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.5.3 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-09-16' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.0 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-09-29' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -802,15 +828,25 @@ if ($compliance -eq $true) {
 
         $windowsVersions | Sort-Object -Unique | ForEach-Object {
             $version = $_
+
+            $latestBuilds = $(if ($useGraphForWindowsUpdates -eq $true) {
+                    $(Get-WindowsUpdateBuildGraph -osVersion $version)
+                }
+                else {
+                    $(Get-WindowsUpdateBuild -osVersion $version)
+                })
+            if ($latestBuilds -is [array] -and $latestBuilds.Count -ge $complianceOffset) {
+                $latestBuild = $latestBuilds[$complianceOffset]
+            }
+            else {
+                $latestBuild = $latestBuilds
+            }
+
             $windowsBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = $(if ($useGraphForWindowsUpdates -eq $true) {
-                        $(Get-WindowsUpdateBuildGraph -osVersion $version)[$complianceOffset]
-                    }
-                    else {
-                        $(Get-WindowsUpdateBuild -osVersion $version)[$complianceOffset]
-                    })
+                latestBuild = $latestBuild.version
                 isEol       = $windowsOS | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol
+                link        = $latestBuild.link
             }
         }
 
@@ -828,6 +864,7 @@ if ($compliance -eq $true) {
                 $minVersion = $compliancePolicy.osMinimumVersion
                 $osVersion = $minVersion.Split('.')[2]
                 $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+                $latestBuildLink = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty link
                 $buildEol = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
 
                 # Validate the latest build format
@@ -845,11 +882,11 @@ if ($compliance -eq $true) {
 
                         if ($buildEol -eq $true) {
                             Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                            $updateItems += @{text = "$os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                            $updateItems += @{text = "$os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to [$latestBuild]($latestBuildLink)"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                         }
                         else {
                             Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                            $updateItems += @{text = "$os $('10.0.' + $osVersion) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                            $updateItems += @{text = "$os $('10.0.' + $osVersion) $noticeText $minVersion to [$latestBuild]($latestBuildLink)"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                         }
                     }
                 }
@@ -865,6 +902,7 @@ if ($compliance -eq $true) {
                     $minVersion = $buildRange.lowestVersion
                     $osVersion = $minVersion.Split('.')[2]
                     $latestBuild = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+                    $latestBuildLink = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty link
                     $buildEol = $windowsBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
 
                     # Validate the latest build format
@@ -882,11 +920,11 @@ if ($compliance -eq $true) {
 
                             if ($buildEol -eq $true) {
                                 Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                                $updateItems += @{text = "$os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                                $updateItems += @{text = "$os $('10.0.' + $osVersion) (end-of-life) $noticeText $minVersion to [$latestBuild]($latestBuildLink)"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                             }
                             else {
                                 Write-Host "$os $policyType policy with $os $('10.0.' + $osVersion) $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                                $updateItems += @{text = "$os $('10.0.' + $osVersion) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                                $updateItems += @{text = "$os $('10.0.' + $osVersion) $noticeText $minVersion to [$latestBuild]($latestBuildLink)"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                             }
                         }
                     }
@@ -969,13 +1007,25 @@ if ($compliance -eq $true) {
 
         $macOSVersions | Sort-Object -Unique | ForEach-Object {
             $version = $_
+            $latestBuildLink = $null
             try {
-                $latestBuild = (Get-AppleUpdateBuild -OS 'macOS' -osVersion $version)[$complianceOffset]
+                $latestBuilds = (Get-AppleUpdateBuild -OS 'macOS' -osVersion $version)
+                if ($latestBuilds -is [array] -and $latestBuilds.Count -ge $complianceOffset) {
+                    $latestBuild = $latestBuilds[$complianceOffset]
+                }
+                else {
+                    $latestBuild = $latestBuilds
+                }
+
+                if ($latestBuild -is [PSCustomObject]) {
+                    $latestBuildLink = $latestBuild.link
+                    $latestBuild = $latestBuild.version
+                }
             }
             catch {
                 $latestBuild = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty LatestName
-                if ($latestBuild -notmatch '^\d{2}\.\d{1,2}$'){
-                    $latestBuild = $latestBuild + ".0"
+                if ($latestBuild -notmatch '^\d{2}\.\d{1,2}$') {
+                    $latestBuild = $latestBuild + '.0'
                 }
             }
             $isEol = $macOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
@@ -984,6 +1034,7 @@ if ($compliance -eq $true) {
                 version     = $version
                 latestBuild = $latestBuild
                 isEol       = $isEol
+                link        = $latestBuildLink
             }
         }
 
@@ -997,7 +1048,9 @@ if ($compliance -eq $true) {
             $minVersion = $compliancePolicy.osMinimumVersion
             $osVersion = $minVersion.Split('.')[0]
             $latestBuild = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+            $latestBuildLink = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty link
             $buildEol = $macOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
+            $latestBuildDisplay = if (![string]::IsNullOrEmpty($latestBuildLink)) { "[$latestBuild]($latestBuildLink)" } else { $latestBuild }
 
             if ($latestBuild -match '^\d{2}\.\d{1,2}\.\d{1,2}$' -or $latestBuild -match '^\d{2}\.\d{1,2}$') {
                 # end of life but up to date
@@ -1012,11 +1065,11 @@ if ($compliance -eq $true) {
                     $compliancePolicy.osMinimumVersion = $latestBuild
                     if ($buildEol -eq $true) {
                         Write-Host "$os $policyType policy with $os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuildDisplay"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                     }
                     else {
                         Write-Host "$os $policyType policy with $os $osVersion $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuildDisplay"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                     }
                 }
             }
@@ -1097,13 +1150,25 @@ if ($compliance -eq $true) {
 
         $iOSVersions | Sort-Object -Unique | ForEach-Object {
             $version = $_
+            $latestBuildLink = $null
             try {
-                $latestBuild = (Get-AppleUpdateBuild -OS 'iOS' -osVersion $version)[$complianceOffset]
+                $latestBuilds = Get-AppleUpdateBuild -OS 'iOS' -osVersion $version
+                if ($latestBuilds -is [array] -and $latestBuilds.Count -ge $complianceOffset) {
+                    $latestBuild = $latestBuilds[$complianceOffset]
+                }
+                else {
+                    $latestBuild = $latestBuilds
+                }
+
+                if ($latestBuild -is [PSCustomObject]) {
+                    $latestBuildLink = $latestBuild.link
+                    $latestBuild = $latestBuild.version
+                }
             }
             catch {
                 $latestBuild = $iOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty LatestName
-                if ($latestBuild -notmatch '^\d{2}\.\d{1,2}$'){
-                    $latestBuild = $latestBuild + ".0"
+                if ($latestBuild -notmatch '^\d{2}\.\d{1,2}$') {
+                    $latestBuild = $latestBuild + '.0'
                 }
             }
             $isEol = $iOSOS | Where-Object { $_.name -eq $version } | Select-Object -ExpandProperty isEol
@@ -1112,6 +1177,7 @@ if ($compliance -eq $true) {
                 version     = $version
                 latestBuild = $latestBuild
                 isEol       = $isEol
+                link        = $latestBuildLink
             }
         }
 
@@ -1125,7 +1191,9 @@ if ($compliance -eq $true) {
             $minVersion = $compliancePolicy.osMinimumVersion
             $osVersion = $minVersion.Split('.')[0]
             $latestBuild = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty latestBuild
+            $latestBuildLink = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty link
             $buildEol = $iOSBuilds | Where-Object { $_.version -eq $osVersion } | Select-Object -ExpandProperty isEol
+            $latestBuildDisplay = if (![string]::IsNullOrEmpty($latestBuildLink)) { "[$latestBuild]($latestBuildLink)" } else { $latestBuild }
 
             if ($latestBuild -match '^\d{2}\.\d{1,2}\.\d{1,2}$' -or $latestBuild -match '^\d{2}\.\d{1,2}$') {
                 if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -eq $minVersion) {
@@ -1139,11 +1207,11 @@ if ($compliance -eq $true) {
                     $compliancePolicy.osMinimumVersion = $latestBuild
                     if ($buildEol -eq $true) {
                         Write-Host "$os $policyType policy with $os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuildDisplay"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                     }
                     else {
                         Write-Host "$os $policyType policy with $os $osVersion $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuildDisplay"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                     }
                 }
             }
@@ -1226,10 +1294,19 @@ if ($compliance -eq $true) {
 
         $androidVersions | Sort-Object -Unique | ForEach-Object {
             $version = $_
+            $latestPatch = $androidPatch[$complianceOffset]
+            $latestPatchVersion = $latestPatch
+            $latestPatchLink = $null
+            if ($latestPatch -is [PSCustomObject]) {
+                $latestPatchVersion = $latestPatch.version
+                $latestPatchLink = $latestPatch.link
+            }
+
             $androidBuilds += [PSCustomObject]@{
                 version     = $version
-                latestBuild = $androidPatch[$complianceOffset]
+                latestBuild = $latestPatchVersion
                 isEol       = $androidOS | Where-Object { $($_.name + '.0') -eq "$version" -or $_.name -eq "$version" } | Select-Object -ExpandProperty isEol
+                link        = $latestPatchLink
             }
         }
 
@@ -1243,7 +1320,9 @@ if ($compliance -eq $true) {
             $osVersion = $compliancePolicy.osMinimumVersion
             $minVersion = $compliancePolicy.minAndroidSecurityPatchLevel
             $latestBuild = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty latestBuild
+            $latestBuildLink = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty link
             $buildEol = $androidBuilds | Where-Object { $_.version -eq $compliancePolicy.osMinimumVersion } | Select-Object -ExpandProperty isEol
+            $latestBuildDisplay = if (![string]::IsNullOrEmpty($latestBuildLink)) { "[$latestBuild]($latestBuildLink)" } else { $latestBuild }
 
             if ($latestBuild -match '^\d{4}\-\d{2}\-\d{2}$') {
                 if ($buildEol -eq $true -and $null -ne $latestBuild -and $latestBuild -ne $minVersion) {
@@ -1258,12 +1337,12 @@ if ($compliance -eq $true) {
 
                     if ($buildEol -eq $true) {
                         Write-Host "$os $policyType policy with $os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        $updateItems += @{text = "$os $osVersion (end-of-life) $noticeText $minVersion to $latestBuildDisplay"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
 
                     }
                     else {
                         Write-Host "$os $policyType policy with $os $osVersion $noticeText $minVersion to $latestBuild" -ForegroundColor Yellow
-                        $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuild"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
+                        $updateItems += @{text = "$os $osVersion $noticeText $minVersion to $latestBuildDisplay"; wrap = $true; type = 'TextBlock'; spacing = 'None' }
                     }
                 }
             }

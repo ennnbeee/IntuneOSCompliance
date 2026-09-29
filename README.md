@@ -46,7 +46,9 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
-- **v0.5.0**
+- **v0.6.0**
+  - Teams notifications now support links to update catalog documents.
+- v0.5.0
   - Moved to using Graph for Windows Update build information as Microsoft have retired the Atom RSS feeds.
   - The paramter `useGraphForWindowsUpdates` is set to `true` by default, ensure Graph permissions have been updated to support `WindowsUpdates.Read.All`
 - v0.4.0
