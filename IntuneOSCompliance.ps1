@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.5.4
+.VERSION 0.6.1
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.6.1 - Removed use of Windows 11 26H1 from compliance and mam checks
 v0.6.0 - Support for links to update articles and bug fixes
 v0.5.3 - Added handling for apple end-of-life status in compliance checks
 v0.5.2 - Support for AOSP
@@ -576,8 +577,8 @@ function Get-AppleUpdateBuild() {
         foreach ($update in $Updates.rss.channel.Item) {
             if (($update.title -like "*$OS*" -and $update.title -like "*$osVersion*") -and ($update.title -notlike '*beta*' -and $update.title -notlike '*RC*')) {
                 $buildVersions += [PSCustomObject]@{
-                    version = ($update.title -split ' ')[-1]
-                    link    = $update.link
+                    version   = ($update.title -split ' ')[-1]
+                    link      = $update.link
                     published = [datetimeoffset]$update.pubDate
                 }
             }
@@ -733,8 +734,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.0 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-09-29' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.1 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-09-30' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -835,14 +836,29 @@ if ($compliance -eq $true) {
             if ($latestBuilds -is [array] -and $latestBuilds.Count -ge $complianceOffset) {
                 $latestBuild = $latestBuilds[$complianceOffset]
             }
+            # Handle cases where no latest builds are found
+            elseif ($null -eq $latestBuilds) {
+                if ($version -eq '26300') {
+                    $latestBuild = @{ version = "10.0.$version.9550"; link = "" }
+                }
+                else {
+                    $latestBuild = @{ version = "10.0.$version.0000"; link = "" }
+                }
+            }
             else {
                 $latestBuild = $latestBuilds
+            }
+
+            #Eol
+            $isEol = $windowsOS | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol -First 1
+            if ($null -eq $isEol) {
+                $isEol = $false
             }
 
             $windowsBuilds += [PSCustomObject]@{
                 version     = $version
                 latestBuild = $latestBuild.version
-                isEol       = $windowsOS | Where-Object { $_.LatestName -like "*$($version)*" } | Select-Object -ExpandProperty isEol
+                isEol       = $isEol
                 link        = $latestBuild.link
             }
         }
@@ -1418,6 +1434,8 @@ if ($mam -eq $true) {
     if ($null -ne $windowsAppProtectionPolicies) {
         Write-Host "`n`nFound $($windowsAppProtectionPolicies.Count) $os $policyType policies with minimum OS version requirements." -ForegroundColor Magenta
         $windowsOS = Get-EndOfLifeDate -os Windows -sku Consumer
+        # Removed Windows 11 26H1 from list
+        $windowsOS = $windowsOS | Where-Object { $_.LatestName -ne '10.0.28000' }
         $newWarning = "$($windowsOS.LatestName[$mamOffset]).0"
         $newRequired = "$($windowsOS.LatestName[$mamOffset + 1]).0"
         $newWipe = "$($windowsOS.LatestName[$mamOffset + 2]).0"
