@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.6.1
+.VERSION 0.6.2
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.6.2 - endoflife function updated now that 26H1 is reporting correctly
 v0.6.1 - Removed use of Windows 11 26H1 from compliance and mam checks
 v0.6.0 - Support for links to update articles and bug fixes
 v0.5.3 - Added handling for apple end-of-life status in compliance checks
@@ -663,7 +664,7 @@ function Get-EndOfLifeDate {
 
         if ($os -eq 'Windows') {
             if ($sku -eq 'Consumer') {
-                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-e*' -and $_.name -notlike '*26h1*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-e*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
             }
             else {
                 $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
@@ -734,8 +735,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.1 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-09-30' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.2 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-10-01' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
