@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.6.2
+.VERSION 0.6.3
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.6.3 - Updated handling for Windows hotpatch updates and limited update results to monthly only
 v0.6.2 - endoflife function updated now that 26H1 is reporting correctly
 v0.6.1 - Removed use of Windows 11 26H1 from compliance and mam checks
 v0.6.0 - Support for links to update articles and bug fixes
@@ -541,11 +542,13 @@ function Get-WindowsUpdateBuildGraph {
             $results += $additional.value
         }
 
-        $filteredResults = foreach ($result in ($results | Where-Object { $_.catalogName -notlike '*Preview*' -and $_.shortName -like '*B*' })) {
+        $trimmedResults = $results | Where-Object { $_.catalogName -notlike '*DotNet*' -and $_.catalogName -notlike '*Preview*' -and $_.qualityUpdateClassification -eq 'security' -and $_.qualityUpdateCadence -eq 'monthly' }
+        $filteredResults = foreach ($result in $trimmedResults) {
             foreach ($revision in ($result.productRevisions | Where-Object { $_.osBuild.buildNumber -eq [int]$osVersion })) {
                 [PSCustomObject]@{
-                    version = $revision.id
-                    link    = $revision.knowledgeBaseArticle.url
+                    version  = $revision.id
+                    link     = $revision.knowledgeBaseArticle.url
+                    hotpatch = $revision.isHotpatchUpdate
                 }
             }
         }
@@ -735,7 +738,7 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.2 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.3 Public Preview' -ForegroundColor Yellow -NoNewline
 Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-10-01' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
@@ -840,10 +843,10 @@ if ($compliance -eq $true) {
             # Handle cases where no latest builds are found
             elseif ($null -eq $latestBuilds) {
                 if ($version -eq '26300') {
-                    $latestBuild = @{ version = "10.0.$version.9550"; link = "" }
+                    $latestBuild = @{ version = "10.0.$version.9550"; link = '' }
                 }
                 else {
-                    $latestBuild = @{ version = "10.0.$version.0000"; link = "" }
+                    $latestBuild = @{ version = "10.0.$version.0000"; link = '' }
                 }
             }
             else {
