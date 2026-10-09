@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.6.3
+.VERSION 0.6.4
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.6.4 - Minor windows compliance bug fixes
 v0.6.3 - Updated handling for Windows hotpatch updates and limited update results to monthly only
 v0.6.2 - endoflife function updated now that 26H1 is reporting correctly
 v0.6.1 - Removed use of Windows 11 26H1 from compliance and mam checks
@@ -738,8 +739,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.3 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-10-01' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.4 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-10-09' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -843,10 +844,10 @@ if ($compliance -eq $true) {
             # Handle cases where no latest builds are found
             elseif ($null -eq $latestBuilds) {
                 if ($version -eq '26300') {
-                    $latestBuild = @{ version = "10.0.$version.9550"; link = '' }
+                    $latestBuild = @{ version = "10.0.$version.9550"; link = 'https://support.microsoft.com/en-us/servicing/os/windows-11/2026/09/windows-11-version-26h2-update-history' }
                 }
                 else {
-                    $latestBuild = @{ version = "10.0.$version.0000"; link = '' }
+                    $latestBuild = @{ version = "10.0.$version.0000"; link = 'https://support.microsoft.com/en-us/servicing/os/windows-11/2026/09/windows-11-version-26h2-update-history' }
                 }
             }
             else {
