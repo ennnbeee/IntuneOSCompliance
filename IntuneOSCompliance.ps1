@@ -14,7 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
-v0.7.0 - Updated logic for Enrollment Platform restrictions
+v0.7.0 - Updated iOS/iPadOS Enrollment Platform Restrictions to detect whether supported OS has been updated in the last two months.
 v0.6.4 - Minor windows compliance bug fixes
 v0.6.3 - Updated handling for Windows hotpatch updates and limited update results to monthly only
 v0.6.2 - endoflife function updated now that 26H1 is reporting correctly
@@ -153,7 +153,7 @@ param(
 
 )
 
-#region functions
+#region Functions
 function Test-JSONData {
 
     param (
@@ -689,7 +689,7 @@ function Get-EndOfLifeDate {
 }
 #endregion
 
-#region variables
+#region Variables
 $androidCompliance = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and-com.png'
 $androidMAM = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and-mam.png'
 $androidRestrictions = 'https://raw.githubusercontent.com/ennnbeee/IntuneOSCompliance/refs/heads/main/img/and-com.png'
@@ -725,7 +725,7 @@ $noticeText = switch ($report) {
 $twoMonthsAgo = (Get-Date).AddMonths(-2).ToString('yyyy-MM-dd')
 #endregion
 
-#region intro
+#region Intro
 Write-Host '
 ░▀█▀░█▀█░▀█▀░█░█░█▀█░█▀▀
 ░░█░░█░█░░█░░█░█░█░█░█▀▀
@@ -747,7 +747,7 @@ Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennn
 Start-Sleep -Seconds $rndWait
 #endregion
 
-#region module check
+#region Module Check
 $modules = @('Microsoft.Graph.Authentication')
 foreach ($module in $modules) {
     Write-Host "`nChecking for $module PowerShell module..." -ForegroundColor Cyan
@@ -761,7 +761,7 @@ foreach ($module in $modules) {
 }
 #endregion
 
-#region app auth
+#region App Auth
 try {
     if (!$tenantId) {
         Write-Host 'Connecting using interactive authentication' -ForegroundColor Yellow
@@ -791,7 +791,7 @@ catch {
 }
 #endregion
 
-#region scopes
+#region Scopes
 $currentScopes = $context.Scopes
 $missingScopes = $requiredScopes | Where-Object { $_ -notin $currentScopes }
 if ($missingScopes.Count -gt 0) {
@@ -806,7 +806,7 @@ else {
 Start-Sleep -Seconds $rndWait
 #endregion
 
-#region compliance
+#region Compliance
 if ($compliance -eq $true) {
     $policyType = 'Compliance'
 
@@ -1429,7 +1429,7 @@ if ($compliance -eq $true) {
 }
 #endregion
 
-#region mam
+#region MAM
 if ($mam -eq $true) {
     $policyType = 'App Protection'
 
@@ -1743,7 +1743,7 @@ if ($mam -eq $true) {
 }
 #endregion
 
-#region platform restrictions
+#region Platform Restrictions
 if ($platformRestrictions -eq $true) {
     $policyType = 'Enrolment Platform Restriction'
 
@@ -2004,7 +2004,7 @@ if ($platformRestrictions -eq $true) {
 }
 #endregion
 
-#region teams notification
+#region Teams Notification
 if (![string]::IsNullOrEmpty($teamsWebHook) -and $teamsItems.Count -ne 0) {
     if ($report -eq $false) {
         $description = "The below policies have been automatically updated at $dateTime"

@@ -46,7 +46,9 @@ IntuneOSCompliance is currently in Public Preview, meaning that although the it 
 
 ## 🔄 Updates
 
-- **v0.6.0**
+- **v0.7.0**
+  - Updated iOS/iPadOS Enrollment Platform Restrictions to detect whether supported OS has been updated in the last two months.
+- v0.6.0
   - Teams notifications now support links to update catalog documents.
 - v0.5.0
   - Moved to using Graph for Windows Update build information as Microsoft have retired the Atom RSS feeds.
