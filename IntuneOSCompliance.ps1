@@ -1,7 +1,7 @@
 #Requires -Version 7
 <#PSScriptInfo
 
-.VERSION 0.6.4
+.VERSION 0.7.0
 .GUID 5101b3d0-e968-4607-8b90-2562bfcb703f
 .AUTHOR Nick Benton
 .COMPANYNAME
@@ -14,6 +14,7 @@
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
 .RELEASENOTES
+v0.7.0 - Updated logic for Enrollment Platform restrictions
 v0.6.4 - Minor windows compliance bug fixes
 v0.6.3 - Updated handling for Windows hotpatch updates and limited update results to monthly only
 v0.6.2 - endoflife function updated now that 26H1 is reporting correctly
@@ -668,15 +669,15 @@ function Get-EndOfLifeDate {
 
         if ($os -eq 'Windows') {
             if ($sku -eq 'Consumer') {
-                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-e*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-e*' } | Select-Object -Property name, label, isEol, @{Name = 'latestName'; Expression = { $_.latest.name } }, @{Name = 'updateDate'; Expression = { $_.latest.date } }
             }
             else {
-                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' } | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+                $filteredResults = $results | Where-Object { $_.name -notlike '*lts*' -and $_.name -notlike '*-w*' } | Select-Object -Property name, label, isEol, @{Name = 'latestName'; Expression = { $_.latest.name } }, @{Name = 'updateDate'; Expression = { $_.latest.date } }
             }
-
         }
         else {
-            $filteredResults = $results | Select-Object -Property name, label, isEol, @{Name = 'LatestName'; Expression = { $_.latest.name } }
+            $filteredResults = $results | Select-Object -Property name, label, isEol, @{Name = 'latestName'; Expression = { $_.latest.name } }, @{Name = 'updateDate'; Expression = { $_.latest.date } }
+
         }
 
         return $filteredResults
@@ -721,6 +722,7 @@ $noticeText = switch ($report) {
     $true { 'should be updated from' }
     $false { 'updated from' }
 }
+$twoMonthsAgo = (Get-Date).AddMonths(-2).ToString('yyyy-MM-dd')
 #endregion
 
 #region intro
@@ -739,8 +741,8 @@ Write-Host '
 
 Write-Host "`nIntuneOSCompliance - Automatic update of Microsoft Intune operating system compliance and app protection policies." -ForegroundColor Green
 Write-Host "`nNick Benton - oddsandendpoints.co.uk" -NoNewline;
-Write-Host ' | Version' -NoNewline; Write-Host ' 0.6.4 Public Preview' -ForegroundColor Yellow -NoNewline
-Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-10-09' -ForegroundColor Magenta
+Write-Host ' | Version' -NoNewline; Write-Host ' 0.7.0 Public Preview' -ForegroundColor Yellow -NoNewline
+Write-Host ' | Last updated: ' -NoNewline; Write-Host '2026-11-19' -ForegroundColor Magenta
 Write-Host "`nIf you have any feedback, open an issue at https://github.com/ennnbeee/IntuneOSCompliance/issues" -ForegroundColor Cyan
 Start-Sleep -Seconds $rndWait
 #endregion
@@ -1754,8 +1756,8 @@ if ($platformRestrictions -eq $true) {
         Write-Host "`n`nFound $($windowsPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
         $windowsOS = Get-EndOfLifeDate -os Windows -sku Consumer
         $windowsSupported = $windowsOS | Where-Object { $_.isEol -eq $false }
-        $newMinOS = "$($windowsSupported[-1].LatestName).0000"
-        $newMaxOS = "$($windowsSupported[0].LatestName).9999"
+        $newMinOS = "$($windowsSupported[-1].LatestName).00000"
+        $newMaxOS = "$($windowsSupported[0].LatestName).65535"
 
         foreach ($platformRestriction in $windowsPlatformRestrictions) {
             $policyChange = $false
@@ -1838,9 +1840,9 @@ if ($platformRestrictions -eq $true) {
     if ($null -ne $iOSPlatformRestrictions) {
         Write-Host "`n`nFound $($iOSPlatformRestrictions.Count) $os $policyType policies allowing BYOD enrolment." -ForegroundColor Magenta
         $iOSOS = Get-EndOfLifeDate -os iOS
-        $iOSSupported = $iOSOS | Where-Object { $_.isEol -eq $false }
+        $iOSSupported = $iOSOS | Where-Object { $_.isEol -eq $false -and $_.updateDate -ge $twoMonthsAgo }
         $newMinOS = "$($iOSSupported[-1].label).0.0"
-        $newMaxOS = "$($iOSSupported[0].label).99.99"
+        $newMaxOS = "$($iOSSupported[0].label).65535.65535"
 
         foreach ($platformRestriction in $iOSPlatformRestrictions) {
             $policyChange = $false
@@ -1925,7 +1927,7 @@ if ($platformRestrictions -eq $true) {
         $androidOS = Get-EndOfLifeDate -os Android
         $androidOSSupported = $androidOS | Where-Object { $_.isEol -eq $false }
         $newMinOS = "$($androidOSSupported[-1].name).0.0"
-        $newMaxOS = "$($androidOSSupported[0].name).99.99"
+        $newMaxOS = "$($androidOSSupported[0].name).65535.65535"
 
         foreach ($platformRestriction in $androidPlatformRestrictions) {
             $policyChange = $false
